@@ -1,0 +1,75 @@
+{
+    "name": "seaport-gossip",
+    "version": "0.0.1",
+    "description": "A peer-to-peer network for sharing Seaport orders.",
+    "author": "OpenSea Protocol Team",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src",
+        "prisma"
+    ],
+    "type": "module",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js"
+        }
+    },
+    "bin": {
+        "seaport-gossip": "./dist/bin/start.js"
+    },
+    "scripts": {
+        "postinstall": "yarn depFixes && yarn prisma:generate",
+        "depFixes": "yarn yogaDepFix && yarn yogaDepFix2 && yarn yogaDepFix3 && yarn graphqlToolsDepFix && yarn graphqlScalarsDepFix",
+        "yogaDepFix": "cp node_modules/@graphql-yoga/node/index.d.ts node_modules/@graphql-yoga/node/index.d.mts",
+        "yogaDepFix2": "cp node_modules/@graphql-yoga/common/index.d.ts node_modules/@graphql-yoga/common/index.d.mts",
+        "yogaDepFix3": "npx replace \"server'\" \"server.js'\" node_modules/@graphql-yoga/common/index.d.mts",
+        "graphqlToolsDepFix": "cp node_modules/@graphql-tools/schema/index.d.ts node_modules/@graphql-tools/schema/index.d.mts",
+        "graphqlScalarsDepFix": "cp node_modules/graphql-scalars/index.d.ts node_modules/graphql-scalars/index.d.mts",
+        "build": "tsc -p ./tsconfig.prod.json",
+        "lint": "eslint ./src ./test",
+        "lint:fix": "eslint ./src --fix",
+        "prisma:generate": "SKIP_PRISMA_VERSION_CHECK=true prisma generate",
+        "start:dev": "ts-node src/bin/start.ts",
+        "start:devnet": "ts-node scripts/simulate/run-local-net.ts",
+        "test": "mocha test/**/*.spec.ts"
+    },
+    "dependencies": {
+        "@chainsafe/libp2p-gossipsub": "^1.1.2",
+        "@chainsafe/libp2p-noise": "^6.2.0",
+        "@graphql-yoga/node": "^2.9.2",
+        "@libp2p/bootstrap": "^1.0.6",
+        "@libp2p/interfaces": "^2.0.3",
+        "@libp2p/kad-dht": "^1.0.16",
+        "@libp2p/mplex": "^1.2.1",
+        "@libp2p/websockets": "^1.0.9",
+        "@prisma/client": "^3.15.2",
+        "class-validator": "^0.13.2",
+        "graphql": "^15.3.0",
+        "graphql-fields": "^2.0.3",
+        "graphql-scalars": "^1.17.0",
+        "libp2p": "^0.37.3",
+        "prom-client": "^14.0.1",
+        "reflect-metadata": "^0.1.13",
+        "type-graphql": "^1.1.1",
+        "typegraphql-prisma": "^0.20.4"
+    },
+    "devDependencies": {
+        "@chainsafe/eslint-plugin-node": "^11.2.3",
+        "@types/chai": "^4.3.1",
+        "@types/graphql-fields": "^1.3.4",
+        "@types/mocha": "^9.1.1",
+        "@types/node": "^16.11.7",
+        "@typescript-eslint/eslint-plugin": "^5.28.0",
+        "@typescript-eslint/parser": "^5.28.0",
+        "chai": "^4.3.6",
+        "eslint": "^8.17.0",
+        "eslint-config-prettier": "^8.5.0",
+        "eslint-plugin-import": "^2.26.0",
+        "mocha": "^10.0.0",
+        "prisma": "^3.15.2",
+        "ts-node": "^10.8.1",
+        "typescript": "^4.7.3"
+    }
+}

@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+      "target": "ESNext",
+      "module": "NodeNext",
+      "declaration": true,
+      "declarationMap": true,
+      "experimentalDecorators": true,
+      "emitDecoratorMetadata": true,
+      "sourceMap": true,
+      "strict": true,
+      "typeRoots": ["node_modules/@types", "./src/@types"],
+      "noEmitOnError": true,
+      "skipLibCheck": true,
+    },
+    "include": ["src", "scripts", "test"],
+    "ts-node": {
+      "esm": true
+    }
+  }

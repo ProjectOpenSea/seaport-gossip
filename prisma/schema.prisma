@@ -1,0 +1,109 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator typegraphql {
+  provider = "typegraphql-prisma"
+  output   = "../node_modules/@generated/type-graphql"
+}
+
+model OfferItem {
+  id String @id @default(cuid())
+
+  itemType             Int
+  tokenAddress         String
+  identifierOrCritiera String
+  startAmount          String
+  endAmount            String
+
+  order     Order  @relation(fields: [orderHash], references: [hash])
+  orderHash String
+}
+
+model ConsiderationItem {
+  id String @id @default(cuid())
+
+  itemType             Int
+  tokenAddress         String
+  identifierOrCritiera String
+  startAmount          String
+  endAmount            String
+
+  recipient String
+
+  order     Order  @relation(fields: [orderHash], references: [hash])
+  orderHash String
+}
+
+model Order {
+  hash String @id @unique
+
+  offer         OfferItem[]
+  consideration ConsiderationItem[]
+
+  offerer    String
+  signature  String
+  orderType  Int
+  startTime  DateTime
+  endTime    DateTime
+  counter    Int
+  salt       String
+  conduitKey String
+  zone       String
+  zoneHash   String
+
+  // Basic Order
+  additionalRecipients String?
+
+  // Advanced Order
+  numerator   Int?
+  denominator Int?
+  extraData   String?
+
+  // Metadata
+  chainId String
+  metadata        OrderMetadata?
+  orderMetadataId String
+}
+
+model OrderMetadata {
+  id String @id @default(cuid())
+
+  isValid      Boolean
+  isExpired    Boolean
+  isUnfillable Boolean
+  isPinned     Boolean
+  isRemoved    Boolean
+
+  lastValidatedBlockNumber String
+  lastValidatedBlockHash   String
+
+  ethRPCRequestsSentInCurrentUTCDay Int
+  startOfCurrentUTCDay              DateTime
+
+  order     Order  @relation(fields: [orderHash], references: [hash])
+  orderHash String @unique
+}
+
+model PeerStore {
+  key  String @id
+  data Bytes
+}
+
+model DHT {
+  key  String @id
+  data Bytes
+}
+
+model EthHeaders {
+  hash      String   @id
+  number    String
+  parent    String
+  timestamp DateTime
+  logs      Bytes
+}
