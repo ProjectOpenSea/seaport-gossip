@@ -54,19 +54,26 @@ yarn
 ### JavaScript / TypeScript
 
 ```typescript
-import SeaportGossip from 'seaport-gossip'
+import { SeaportGossipNode, OrderEvent } from 'seaport-gossip'
 
-const opts = {}
-const gossip = new SeaportGossip(opts)
+const opts = {
+  maxOrders: 100_000,
+  maxOrdersPerOfferer: 100
+}
 
-const orders = await gossip.getOrders('0xabc')
+const node = new SeaportGossipNode(opts)
 
+const orders = await node.getOrders('0xabc')
 console.log(orders)
 
-gossip.subscribe(
-  [Event.OrderFulfilled, Event.OrderCancelled],
+const newOrders = [{}, {}]
+const numValid = await node.addOrders(newOrders)
+console.log(`Valid added orders: ${numValid}`)
+
+node.subscribe(
+  [OrderEvent.FULFILLED, OrderEvent.CANCELLED],
   '0xabc',
-  (event) => console.log(event)
+  (event) => console.log(`New event: ${event}`)
 )
 ```
 

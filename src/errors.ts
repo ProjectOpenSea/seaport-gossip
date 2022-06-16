@@ -1,0 +1,1 @@
+export const ErrorInvalidAddress = new Error('invalid address')

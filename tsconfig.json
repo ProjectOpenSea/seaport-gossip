@@ -11,6 +11,7 @@
       "typeRoots": ["node_modules/@types", "./src/@types"],
       "noEmitOnError": true,
       "skipLibCheck": true,
+      "resolveJsonModule": true
     },
     "include": ["src", "scripts", "test"],
     "ts-node": {

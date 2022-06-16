@@ -4,10 +4,10 @@ export type Address = string
 
 export interface OfferItem {
     itemType: ItemType
-    tokenAddress: Address
+    token: Address
     identifierOrCriteria: string
-    StartAmount: string
-    EndAmount: string
+    startAmount: string
+    endAmount: string
 }
 
 export interface ConsiderationItem extends OfferItem {
@@ -20,8 +20,8 @@ export interface Order {
     offerer: Address
     signature: string
     orderType: OrderType
-    startTime: string
-    endTime: string
+    startTime: number
+    endTime: number
     counter: number
     salt: string
     conduitKey: string
