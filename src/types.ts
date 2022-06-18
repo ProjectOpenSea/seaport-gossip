@@ -2,7 +2,6 @@ import { Order } from '@prisma/client'
 
 import type { ConsiderationItem, OfferItem } from '@prisma/client'
 
-
 /**
  * Helpers
  */

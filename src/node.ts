@@ -144,8 +144,8 @@ export class SeaportGossipNode {
       create: {
         ...order,
         hash,
-        offer: { create: order.offer},
-        consideration: { create: order.consideration},
+        offer: { create: order.offer },
+        consideration: { create: order.consideration },
         additionalRecipients,
         metadata: {
           create: metadata,
@@ -194,7 +194,7 @@ export class SeaportGossipNode {
       })
       if (metadata === null)
         throw new Error(`Cannot locate order metadata (order hash: ${hash})`)
-      if (metadata.isPinned) return
+      if (metadata.isPinned === true) return
     }
 
     const batch = []
