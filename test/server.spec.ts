@@ -2,7 +2,7 @@
 import { createServer } from '@graphql-yoga/common' 
 import { expect } from 'chai'
 
-import { schema } from '../dist/db/schema.js'
+import { schema } from '../dist/db/index.js'
 
 describe('Server', () => {
   it('should return a valid response', async () =>  {

@@ -46,7 +46,7 @@ To install dependencies for development:
 ```bash
 git clone https://github.com/ProjectOpenSea/seaport-gossip
 cd seaport-gossip
-yarn
+yarn && yarn build
 ```
 
 ## Run
@@ -79,11 +79,23 @@ node.subscribe(
 
 ### CLI
 
+Start a node with the GraphQL server enabled:
+
+`seaport-gossip start`
+
+Get orders for a collection and return:
+
 `seaport-gossip getOrders [address]`
+
+Add an order to the network and return:
 
 `seaport-gossip addOrder [order]`
 
+Subscribe to events for a collection (runs until stopped with CTRL+C):
+
 `seaport-gossip subscribe [address] [comma-separated event types]`
+
+Return stats for your node:
 
 `seaport-gossip stats`
 

@@ -17,23 +17,29 @@
     }
   },
   "bin": {
-    "seaport-gossip": "./dist/bin/start.js"
+    "seaport-gossip": "./dist/bin/cli.js"
   },
   "scripts": {
-    "postinstall": "yarn depFixes && yarn prisma:generate",
-    "depFixes": "yarn yogaDepFix && yarn yogaDepFix2 && yarn yogaDepFix3 && yarn graphqlToolsDepFix && yarn graphqlScalarsDepFix",
-    "yogaDepFix": "cp node_modules/@graphql-yoga/node/index.d.ts node_modules/@graphql-yoga/node/index.d.mts",
-    "yogaDepFix2": "cp node_modules/@graphql-yoga/common/index.d.ts node_modules/@graphql-yoga/common/index.d.mts",
-    "yogaDepFix3": "npx replace \"server'\" \"server.js'\" node_modules/@graphql-yoga/common/index.d.mts",
-    "graphqlToolsDepFix": "cp node_modules/@graphql-tools/schema/index.d.ts node_modules/@graphql-tools/schema/index.d.mts",
-    "graphqlScalarsDepFix": "cp node_modules/graphql-scalars/index.d.ts node_modules/graphql-scalars/index.d.mts",
-    "build": "tsc -p ./tsconfig.prod.json",
-    "lint": "eslint ./src ./test",
-    "lint:fix": "eslint ./src --fix",
+    "postinstall": "yarn depFixes",
+    "depFixes": "yarn depFixYoga && yarn depFixYoga2 && yarn depFixYoga3 && yarn depFixGraphqlTools && yarn depFixGraphqlScalars",
+    "depFixYoga": "cp node_modules/@graphql-yoga/node/index.d.ts node_modules/@graphql-yoga/node/index.d.mts",
+    "depFixYoga2": "cp node_modules/@graphql-yoga/common/index.d.ts node_modules/@graphql-yoga/common/index.d.mts",
+    "depFixYoga3": "npx replace \"server'\" \"server.js'\" node_modules/@graphql-yoga/common/index.d.mts",
+    "depFixGraphqlTools": "cp node_modules/@graphql-tools/schema/index.d.ts node_modules/@graphql-tools/schema/index.d.mts",
+    "depFixGraphqlScalars": "cp node_modules/graphql-scalars/index.d.ts node_modules/graphql-scalars/index.d.mts",
+    "build": "yarn prisma:generate && yarn build:ts",
+    "build:ts": "tsc -p tsconfig.prod.json",
+    "lint": "eslint src test prisma",
+    "lint:fix": "eslint src test prisma --fix",
     "prisma:generate": "SKIP_PRISMA_VERSION_CHECK=true prisma generate",
+    "prisma:migrate": "prisma migrate",
+    "start:cli": "ts-node src/bin/cli.ts",
     "start:dev": "ts-node src/bin/start.ts",
     "start:devnet": "ts-node scripts/simulate/run-local-net.ts",
     "test": "NODE_OPTIONS='--experimental-json-modules' mocha test/**/*.spec.ts"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@chainsafe/libp2p-gossipsub": "^1.1.2",
@@ -46,6 +52,7 @@
     "@libp2p/websockets": "^1.0.9",
     "@prisma/client": "^3.15.2",
     "class-validator": "^0.13.2",
+    "ethers": "^5.6.8",
     "graphql": "^15.3.0",
     "graphql-fields": "^2.0.3",
     "graphql-scalars": "^1.17.0",

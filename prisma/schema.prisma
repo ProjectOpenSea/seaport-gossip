@@ -16,8 +16,8 @@ model OfferItem {
   id String @id @default(cuid())
 
   itemType             Int
-  tokenAddress         String
-  identifierOrCritiera String
+  token                String
+  identifierOrCriteria String
   startAmount          String
   endAmount            String
 
@@ -29,8 +29,8 @@ model ConsiderationItem {
   id String @id @default(cuid())
 
   itemType             Int
-  tokenAddress         String
-  identifierOrCritiera String
+  token                String
+  identifierOrCriteria String
   startAmount          String
   endAmount            String
 
@@ -49,8 +49,8 @@ model Order {
   offerer    String
   signature  String
   orderType  Int
-  startTime  DateTime
-  endTime    DateTime
+  startTime  Int 
+  endTime    Int
   counter    Int
   salt       String
   conduitKey String
@@ -66,9 +66,8 @@ model Order {
   extraData   String?
 
   // Metadata
-  chainId String
-  metadata        OrderMetadata?
-  orderMetadataId String
+  chainId  String
+  metadata OrderMetadata?
 }
 
 model OrderMetadata {
@@ -76,15 +75,15 @@ model OrderMetadata {
 
   isValid      Boolean
   isExpired    Boolean
-  isUnfillable Boolean
-  isPinned     Boolean
-  isRemoved    Boolean
+  isCancelled  Boolean
+  isPinned     Boolean @default(false)
+  isRemoved    Boolean @default(false)
 
-  lastValidatedBlockNumber String
-  lastValidatedBlockHash   String
+  lastValidatedBlockNumber String?
+  lastValidatedBlockHash   String?
 
-  ethRPCRequestsSentInCurrentUTCDay Int
-  startOfCurrentUTCDay              DateTime
+  ethRPCRequestsSentInCurrentUTCDay Int @default(0)
+  startOfCurrentUTCDay              DateTime @default(now())
 
   order     Order  @relation(fields: [orderHash], references: [hash])
   orderHash String @unique

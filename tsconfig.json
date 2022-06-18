@@ -13,7 +13,7 @@
       "skipLibCheck": true,
       "resolveJsonModule": true
     },
-    "include": ["src", "scripts", "test"],
+    "include": ["src", "prisma", "scripts", "test"],
     "ts-node": {
       "esm": true
     }
