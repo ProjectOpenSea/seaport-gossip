@@ -1,6 +1,7 @@
 import { Order } from '@prisma/client'
 
 import type { ConsiderationItem, OfferItem } from '@prisma/client'
+import type { BigNumber } from 'ethers'
 
 /**
  * Helpers
@@ -34,7 +35,48 @@ export enum OrderEvent {
     VALIDATED,
     INVALIDATED,
     COUNTER_INCREMENTED,
+    NEW
   }
+
+export enum OrderSort {
+    NEWEST,
+    OLDEST,
+    ENDING_SOON,
+    PRICE_ASC,
+    PRICE_DESC,
+    RECENTLY_FULFILLED,
+    RECENTLY_VALIDATED,
+    HIGHEST_LAST_SALE
+  }
+
+export enum OrderFilter {
+    OFFERER_ADDRESS,
+    TOKEN_IDS,
+    BUY_NOW,
+    ON_AUCTION,
+    SINGLE_ITEM,
+    BUNDLES,
+    CURRENCY,
+    HAS_OFFERS
+  }
+
+export interface OrderFilterOpts {
+    [OrderFilter.OFFERER_ADDRESS]?: Address
+    [OrderFilter.TOKEN_IDS]?: bigint[]
+    [OrderFilter.BUY_NOW]?: undefined
+    [OrderFilter.ON_AUCTION]?: undefined
+    [OrderFilter.SINGLE_ITEM]?: undefined
+    [OrderFilter.BUNDLES]?: undefined
+    [OrderFilter.CURRENCY]?: Address
+    [OrderFilter.HAS_OFFERS]?: undefined
+  }
+
+export type OrderStatus = [
+    isValidated: boolean,
+    isCancelled: boolean,
+    totalFilled: BigNumber,
+    totalSize: BigNumber
+  ]
 
 /**
  * Order types - Prisma models
@@ -81,7 +123,7 @@ export interface OrderJSON {
     additionalRecipients?: string[]
 
     // Advanced Order
-    numerator?: number | null
-    denominator?: number | null
+    numerator?: string | null
+    denominator?: string | null
     extraData?: string | null
 }

@@ -62,7 +62,7 @@
       {
         "itemType": 1,
         "token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-        "identifierOrCriteria": "",
+        "identifierOrCriteria": "0",
         "startAmount": "5000000000000000",
         "endAmount": "5000000000000000",
         "recipient": "0x8De9C5A032463C561423387a9648c5C7BCC5BC90"
@@ -102,7 +102,7 @@
       {
         "itemType": 1,
         "token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-        "identifierOrCriteria": "",
+        "identifierOrCriteria": "0",
         "startAmount": "250000000000000",
         "endAmount": "250000000000000",
         "recipient": "0x8De9C5A032463C561423387a9648c5C7BCC5BC90"
@@ -142,7 +142,7 @@
       {
         "itemType": 1,
         "token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-        "identifierOrCriteria": "",
+        "identifierOrCriteria": "0",
         "startAmount": "250000000000000",
         "endAmount": "250000000000000",
         "recipient": "0x8De9C5A032463C561423387a9648c5C7BCC5BC90"

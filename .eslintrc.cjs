@@ -61,6 +61,9 @@ module.exports = {
           Symbol: {
             message: 'Avoid using the `Symbol` type. Did you mean `symbol`?',
           },
+          BigInt: {
+            message: 'Avoid using the `BigInt` type. Did you mean `bigint`?',
+          },
         },
         extendDefaults: false,
       },
@@ -145,6 +148,7 @@ module.exports = {
     '@typescript-eslint/prefer-for-of': 'error',
     '@typescript-eslint/prefer-function-type': 'error',
     '@typescript-eslint/prefer-namespace-keyword': 'error',
+    '@typescript-eslint/prefer-nullish-coalescing': 'error',
     '@typescript-eslint/restrict-plus-operands': 'error',
     '@typescript-eslint/restrict-template-expressions': [
       'error',
@@ -238,6 +242,7 @@ module.exports = {
         patterns: ['src'],
       },
     ],
+    "sort-imports": ["error", { ignoreDeclarationSort: true }],
   },
   overrides: [
     {

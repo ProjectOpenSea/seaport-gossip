@@ -4,10 +4,10 @@ CREATE TABLE "OfferItem" (
     "itemType" INTEGER NOT NULL,
     "token" TEXT NOT NULL,
     "identifierOrCriteria" TEXT NOT NULL,
-    "startAmount" TEXT NOT NULL,
-    "endAmount" TEXT NOT NULL,
+    "startAmount" BIGINT NOT NULL,
+    "endAmount" BIGINT NOT NULL,
     "orderHash" TEXT NOT NULL,
-    CONSTRAINT "OfferItem_orderHash_fkey" FOREIGN KEY ("orderHash") REFERENCES "Order" ("hash") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "OfferItem_orderHash_fkey" FOREIGN KEY ("orderHash") REFERENCES "Order" ("hash") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -16,11 +16,11 @@ CREATE TABLE "ConsiderationItem" (
     "itemType" INTEGER NOT NULL,
     "token" TEXT NOT NULL,
     "identifierOrCriteria" TEXT NOT NULL,
-    "startAmount" TEXT NOT NULL,
-    "endAmount" TEXT NOT NULL,
+    "startAmount" BIGINT NOT NULL,
+    "endAmount" BIGINT NOT NULL,
     "recipient" TEXT NOT NULL,
     "orderHash" TEXT NOT NULL,
-    CONSTRAINT "ConsiderationItem_orderHash_fkey" FOREIGN KEY ("orderHash") REFERENCES "Order" ("hash") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "ConsiderationItem_orderHash_fkey" FOREIGN KEY ("orderHash") REFERENCES "Order" ("hash") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -37,26 +37,56 @@ CREATE TABLE "Order" (
     "zone" TEXT NOT NULL,
     "zoneHash" TEXT NOT NULL,
     "additionalRecipients" TEXT,
-    "numerator" INTEGER,
-    "denominator" INTEGER,
+    "numerator" BIGINT,
+    "denominator" BIGINT,
     "extraData" TEXT,
     "chainId" TEXT NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "OrderMetadata" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "orderHash" TEXT NOT NULL PRIMARY KEY,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "isValid" BOOLEAN NOT NULL,
     "isExpired" BOOLEAN NOT NULL,
     "isCancelled" BOOLEAN NOT NULL,
+    "isAuction" BOOLEAN NOT NULL,
+    "isFullyFulfilled" BOOLEAN NOT NULL,
+    "lastFulfilledAt" DATETIME,
+    "lastFulfilledPrice" BIGINT,
     "isPinned" BOOLEAN NOT NULL DEFAULT false,
     "isRemoved" BOOLEAN NOT NULL DEFAULT false,
     "lastValidatedBlockNumber" TEXT,
     "lastValidatedBlockHash" TEXT,
+    CONSTRAINT "OrderMetadata_orderHash_fkey" FOREIGN KEY ("orderHash") REFERENCES "Order" ("hash") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "NodeStatus" (
+    "chainId" TEXT NOT NULL PRIMARY KEY,
     "ethRPCRequestsSentInCurrentUTCDay" INTEGER NOT NULL DEFAULT 0,
-    "startOfCurrentUTCDay" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "orderHash" TEXT NOT NULL,
-    CONSTRAINT "OrderMetadata_orderHash_fkey" FOREIGN KEY ("orderHash") REFERENCES "Order" ("hash") ON DELETE RESTRICT ON UPDATE CASCADE
+    "startOfCurrentUTCDay" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "Criteria" (
+    "hash" TEXT NOT NULL PRIMARY KEY
+);
+
+-- CreateTable
+CREATE TABLE "CriteriaTokenId" (
+    "tokenId" BIGINT NOT NULL PRIMARY KEY
+);
+
+-- CreateTable
+CREATE TABLE "TokenIdForCriteria" (
+    "criteriaHash" TEXT NOT NULL,
+    "tokenId" BIGINT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY ("criteriaHash", "tokenId"),
+    CONSTRAINT "TokenIdForCriteria_criteriaHash_fkey" FOREIGN KEY ("criteriaHash") REFERENCES "Criteria" ("hash") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "TokenIdForCriteria_tokenId_fkey" FOREIGN KEY ("tokenId") REFERENCES "CriteriaTokenId" ("tokenId") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -82,6 +112,3 @@ CREATE TABLE "EthHeaders" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Order_hash_key" ON "Order"("hash");
-
--- CreateIndex
-CREATE UNIQUE INDEX "OrderMetadata_orderHash_key" ON "OrderMetadata"("orderHash");

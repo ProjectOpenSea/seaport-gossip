@@ -7,8 +7,9 @@ import ISeaport from '../contract-interfaces/Seaport.json' assert { type: 'json'
 import { ItemType } from '../types.js'
 import { orderHash } from '../util/index.js'
 
-import type { OrderJSON, Address, ItemJSON } from '../types.js'
+import type { Address, ItemJSON, OrderJSON , OrderStatus } from '../types.js'
 import type { PrismaClient } from '@prisma/client'
+import type { BigNumber } from 'ethers'
 
 interface OrderValidationOpts {
   prisma: PrismaClient
@@ -24,7 +25,6 @@ export class OrderValidator {
   constructor(opts: OrderValidationOpts) {
     if (opts.web3Provider === '')
       throw new Error('Please define web3Provider opt for order validation')
-    console.log('yo')
 
     this.prisma = opts.prisma
     this.seaport = new ethers.Contract(opts.seaportAddress, ISeaport)
@@ -33,7 +33,7 @@ export class OrderValidator {
 
   public async validate(order: OrderJSON, fulfiller?: Address, updateRecordInDB = false) {
     return true /* eslint-disable no-unreachable */
-    const hash = await orderHash(order)
+    const hash = orderHash(order)
     let isValid = !this.isExpired(order)
     if (isValid) {
       isValid = await this.isCancelled(hash)
@@ -80,8 +80,28 @@ export class OrderValidator {
 
   public async isCancelled(hash: string) {
     return false
-    const status = await this.seaport.getOrderStatus(hash)
-    return status[2]
+    const status: OrderStatus = await this.seaport.getOrderStatus(hash)
+    return status[1]
+  }
+
+  public async isFullyFulfilled(hash: string) {
+    return false
+    const status: OrderStatus = await this.seaport.getOrderStatus(hash)
+    const [totalFilled, totalSize] = status.slice(2) as [BigNumber, BigNumber]
+    return totalFilled.eq(totalSize)
+  }
+
+  public async isAuction(_order: OrderJSON) {
+    // check if order is restricted and zone is EOA,
+    // or zone is one of a (future) whitelist of "auction" zones
+    return false
+  }
+
+  private async _isValidatedOnChain(hash: string) {
+    return false
+    const status: OrderStatus = await this.seaport.getOrderStatus(hash)
+    const [isValidated] = status
+    return isValidated
   }
 
   /**

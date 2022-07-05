@@ -17,13 +17,15 @@ A peer-to-peer network for sharing [Seaport][seaport-repo] orders.
 Seaport Gossip uses [libp2p][libp2p-website] with the following configuration:
 
 - Client
-  - Database: GraphQL, SQLite
+  - Database:
+    - Prisma (ORM)
+    - GraphQL (query language)
+    - SQLite (DB)
   - Metrics: Prometheus / Grafana
 - Libp2p
-  - Transport: websockets 
+  - Transport: websockets
   - Discovery: bootstrap
   - Content Routing: kad-dht
-  - Encryption: NOISE
   - Multiplexing: mplex
   - Pub-Sub: gossipsub
 
@@ -54,26 +56,30 @@ yarn && yarn build
 ### JavaScript / TypeScript
 
 ```typescript
-import { SeaportGossipNode, OrderEvent } from 'seaport-gossip'
+import { SeaportGossipNode, OrderEvent, OrderSort } from 'seaport-gossip'
 
 const opts = {
-  maxOrders: 100_000,
-  maxOrdersPerOfferer: 100
+  // A web3 provider allows your node to validate orders
+  web3Provider: 'localhost:8550',
+  // Default values:
+  maxOrders: 100_000, // ~100MB (~1KB per order)
+  maxOrdersPerOfferer: 100, // to mitigate order spam
 }
 
 const node = new SeaportGossipNode(opts)
 
-const orders = await node.getOrders('0xabc')
+const orders = await node.getOrders('0xabc', {
+  sort: OrderSort.NEWEST,
+  filter: [OrderFilter.BUY_NOW],
+})
 console.log(orders)
 
 const newOrders = [{}, {}]
 const numValid = await node.addOrders(newOrders)
 console.log(`Valid added orders: ${numValid}`)
 
-node.subscribe(
-  [OrderEvent.FULFILLED, OrderEvent.CANCELLED],
-  '0xabc',
-  (event) => console.log(`New event: ${event}`)
+node.subscribe('0xabc', [OrderEvent.FULFILLED, OrderEvent.CANCELLED], (event) =>
+  console.log(`New event for 0xabc: ${event}`)
 )
 ```
 
@@ -83,17 +89,17 @@ Start a node with the GraphQL server enabled:
 
 `seaport-gossip start`
 
-Get orders for a collection and return:
+Return orders for a collection:
 
 `seaport-gossip getOrders [address]`
 
-Add an order to the network and return:
+Add an order to the network:
 
 `seaport-gossip addOrder [order]`
 
 Subscribe to events for a collection (runs until stopped with CTRL+C):
 
-`seaport-gossip subscribe [address] [comma-separated event types]`
+`seaport-gossip subscribe [address] [optional comma-separated event types, default: all events]`
 
 Return stats for your node:
 
@@ -101,15 +107,37 @@ Return stats for your node:
 
 ## API
 
-### gossip.getOrders(address: string)
+### Orders
 
-### gossip.addOrders(orders: Order[])
+#### node.getOrders(address: string, { sort, filter, offset }): Promise<Order[]>
 
-### gossip.subscribe(events: OrderEvent[])
+#### node.getOrderByHash(hash: string): Promise<Order | null>
 
-### gossip.stats()
+#### node.validateOrder(hash: string): Promise<boolean>
 
-For more thorough documentation check out the [API docs][api-docs].
+#### node.addOrders(orders: Order[]): Promise<number>
+
+### Criteria
+
+#### node.getCriteria(hash: string): Promise<CriteriaTokenIds | null>
+
+#### node.addCriteria(tokenIds: bigint[]): Promise<CriteriaHash>
+
+#### node.getProofs(criteriaHash: string, tokenIds: bigint[]): Promise<Proof[]>
+
+### Events
+
+#### node.subscribe(address: string, events: OrderEvent[], onEvent: (event: OrderEvent) => void): Promise<boolean>
+
+#### node.unsubscribe(address: string): Promise<boolean>
+
+### Miscellaneous
+
+#### node.stats(): Promise<NodeStats>
+
+### Docs
+
+For more thorough documentation see the [API docs][api-docs].
 
 ## GraphQL
 
@@ -146,14 +174,9 @@ You can query for orders, add new orders, and subscribe to events.
   orders(
     filters: [
       {
-        field: offer.startAmount
+        field: offer.currentPrice
         kind: GREATER_OR_EQUAL
-        value: "150000"
-      }
-      {
-        field: offer.endAmount
-        kind: GREATER_OR_EQUAL
-        value: "150000"
+        value: 10000000000000000
       }
     ]
   ) {

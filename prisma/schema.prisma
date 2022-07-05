@@ -18,10 +18,10 @@ model OfferItem {
   itemType             Int
   token                String
   identifierOrCriteria String
-  startAmount          String
-  endAmount            String
+  startAmount          BigInt
+  endAmount            BigInt
 
-  order     Order  @relation(fields: [orderHash], references: [hash])
+  order     Order  @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
   orderHash String
 }
 
@@ -31,12 +31,12 @@ model ConsiderationItem {
   itemType             Int
   token                String
   identifierOrCriteria String
-  startAmount          String
-  endAmount            String
+  startAmount          BigInt
+  endAmount            BigInt
 
   recipient String
 
-  order     Order  @relation(fields: [orderHash], references: [hash])
+  order     Order  @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
   orderHash String
 }
 
@@ -49,7 +49,7 @@ model Order {
   offerer    String
   signature  String
   orderType  Int
-  startTime  Int 
+  startTime  Int
   endTime    Int
   counter    Int
   salt       String
@@ -58,35 +58,70 @@ model Order {
   zoneHash   String
 
   // Basic Order
-  additionalRecipients String?
+  additionalRecipients String? /// comma-separated
 
   // Advanced Order
-  numerator   Int?
-  denominator Int?
+  numerator   BigInt?
+  denominator BigInt?
   extraData   String?
 
   // Metadata
-  chainId  String
+  chainId       String /// string decimal
   metadata OrderMetadata?
+
 }
 
 model OrderMetadata {
-  id String @id @default(cuid())
+  orderHash String   @id
+  createdAt DateTime @default(now())
 
-  isValid      Boolean
-  isExpired    Boolean
-  isCancelled  Boolean
-  isPinned     Boolean @default(false)
-  isRemoved    Boolean @default(false)
+  isValid     Boolean
+  isExpired   Boolean
+  isCancelled Boolean
+
+  isAuction Boolean /// when order is restricted and zone is an EOA. in the future may have whitelisted "auction" zones
+
+  isFullyFulfilled     Boolean
+  lastFulfilledAt      DateTime?
+  lastFulfilledPrice   BigInt?
+
+  isPinned  Boolean @default(false)
+  isRemoved Boolean @default(false)
 
   lastValidatedBlockNumber String?
   lastValidatedBlockHash   String?
 
-  ethRPCRequestsSentInCurrentUTCDay Int @default(0)
-  startOfCurrentUTCDay              DateTime @default(now())
+  order     Order  @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
 
-  order     Order  @relation(fields: [orderHash], references: [hash])
-  orderHash String @unique
+}
+
+model NodeStatus {
+  chainId                           String   @id /// string decimal
+  ethRPCRequestsSentInCurrentUTCDay Int      @default(0)
+  startOfCurrentUTCDay              DateTime @default(now())
+}
+
+model Criteria {
+  hash               String               @id
+  tokenIdForCriteria TokenIdForCriteria[]
+}
+
+model CriteriaTokenId {
+  tokenId            BigInt               @id
+  tokenIdForCriteria TokenIdForCriteria[]
+}
+
+model TokenIdForCriteria {
+  criteriaHash String
+  criteria     Criteria        @relation(fields: [criteriaHash], references: [hash], onDelete: Cascade)
+  tokenId      BigInt
+  token        CriteriaTokenId @relation(fields: [tokenId], references: [tokenId], onDelete: Cascade)
+
+  /// createdAt field for many to many workaround
+  /// https://github.com/MichalLytek/typegraphql-prisma/issues/19#issuecomment-907747110
+  createdAt   DateTime @default(now())
+
+  @@id([criteriaHash, tokenId])
 }
 
 model PeerStore {

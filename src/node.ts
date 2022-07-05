@@ -2,48 +2,151 @@
 import { Noise } from '@chainsafe/libp2p-noise'
 import { Bootstrap } from '@libp2p/bootstrap'
 // import { KadDHT } from '@libp2p/kad-dht'
-// import { PeerId } from '@libp2p/interfaces/peer-id'
 import { Mplex } from '@libp2p/mplex'
 import { WebSockets } from '@libp2p/websockets'
 import { PrismaClient } from '@prisma/client'
 import { createLibp2p } from 'libp2p'
 
+import { DEFAULT_SEAPORT_ADDRESS } from './constants.js'
 import { server } from './db/index.js'
-import { ErrorInvalidAddress } from './errors.js'
-import { isValidAddress, orderHash, orderToJSON } from './util/index.js'
+import { ErrorInvalidAddress, ErrorOrderNotFound } from './errors.js'
+import { OrderEvent, OrderFilter, OrderSort } from './types.js'
+import {
+  instanceOfOrder,
+  isValidAddress,
+  orderHash,
+  orderJSONToPrisma,
+  orderToJSON,
+} from './util/index.js'
 import { OrderValidator } from './validate/index.js'
 
-import type { Address, OrderEvent, OrderJSON } from './types.js'
+import type { Address, OrderFilterOpts, OrderJSON , OrderWithItems } from './types.js'
 import type { ConnectionManagerEvents } from '@libp2p/interfaces/connection-manager'
+import type { PeerId } from '@libp2p/interfaces/peer-id'
+import type { Prisma } from '@prisma/client'
 import type { ethers } from 'ethers'
 import type { Libp2p, Libp2pEvents } from 'libp2p'
 
 interface SeaportGossipNodeOpts {
-  /** The peer ID to use for this node. */
-  // peerId?: PeerId
-
-  /** Maximum number of orders to keep in the database. Default: 100_000 */
-  maxOrders?: number
-
-  /** Maximum number of orders per offerer to keep in the database. Default: 100 */
-  maxOrdersPerOfferer?: number
-
   /**
    * Ethereum JSON-RPC url for order validation, or a custom {@link ethers} provider.
-   * This can also be a url specified via environment variable `WEB3_PROVIDER`
+   * This can also be a url specified via environment variable `WEB3_PROVIDER`.
+   * The ethereum chain ID this node will use will be requested from this provider via `eth_chainId`.
    */
   web3Provider?: string | ethers.providers.Provider
 
-  /** Optional custom Seaport address. Default: Seaport v1.1 mainnet address */
+  /**
+   * The peer ID to use for this node.
+   * Default: randomly generated
+   */
+  peerId?: PeerId | null
+
+  /**
+   * Collections to start watching on start.
+   * Default: none
+   */
+  collectionAddresses?: Address[]
+
+  /**
+   * Default set of events to subscribe per collection.
+   * Default: all events
+   */
+  collectionEvents?: OrderEvent[]
+
+  /**
+   * Maximum number of orders to keep in the database. Approx 1KB per order.
+   * Default: 100_000 (~100MB)
+   */
+  maxOrders?: number
+
+  /**
+   * Maximum number of orders per offerer to keep in the database,
+   * to help mitigate spam and abuse. When limit is reached, new orders
+   * are ignored until known orders expire via endTime. Limit does not
+   * apply to locally submitted transactions, but keep in mind receiving
+   * nodes may choose to ignore if their own limits are reached. Healthy
+   * order submission includes short endTimes and use of criteria.
+   * Default: 100
+   **/
+  maxOrdersPerOfferer?: number
+
+  /**
+   * Maximum days in advance to keep an order until its startTime.
+   * Default: 14 days
+   */
+  maxOrderStartTime?: number
+
+  /**
+   * Maximum days to keep an order until its endTime.
+   * Default: 180 days
+   */
+  maxOrderEndTime?: number
+
+  /**
+   * Maximum days to keep an order after it has been fulfilled or cancelled.
+   * Default: 7 days
+   */
+  maxOrderHistory?: number
+
+  /**
+   * Maximum RPC requests to make per day validating orders.
+   * If the 24 hour limit has not been hit then requests are granted
+   * on a per-second basis.
+   * Default: 25,000 requests
+   */
+  maxRPCRequestsPerDay?: number
+
+  /**
+   * Optional custom Seaport address. Default: Seaport v1.1 address
+   * This can also be an address specified via environment variable `SEAPORT_ADDRESS`
+   */
   seaportAddress?: Address
+
+  /**
+   * Enable metrics by passing a Prometheus IP and port (e.g. `127.0.0.1:9090`)
+   * Default: disabled
+   */
+  metricsAddress?: string | null
 }
 
 const defaultOpts = {
+  web3Provider: process.env.WEB3_PROVIDER ?? '',
+  peerId: null,
+  collectionAddresses: [],
+  collectionEvents: Object.values(OrderEvent) as OrderEvent[],
   maxOrders: 100_000,
   maxOrdersPerOfferer: 100,
-  web3Provider: process.env.WEB3_PROVIDER ?? '',
-  seaportAddress:
-    process.env.SEAPORT_ADDRESS ?? '0x00000000006c3852cbEf3e08E8dF289169EdE581',
+  maxOrderStartTime: 14,
+  maxOrderEndTime: 180,
+  maxOrderHistory: 7,
+  maxRPCRequestsPerDay: 25_000,
+  seaportAddress: process.env.SEAPORT_ADDRESS ?? DEFAULT_SEAPORT_ADDRESS,
+  metricsAddress: null,
+}
+
+export interface GetOrdersOpts {
+  /** Re-validate every order before returning. Default: true */
+  validate?: boolean
+
+  /** Number of results to return. Default: 50 (\~50KB). Maximum: 1000 (~1MB) */
+  count?: number
+
+  /** Result offset for pagination. Default: 0 */
+  offset?: number
+
+  /** Sort option. Default: Newest */
+  sort?: OrderSort
+
+  /** Filter options. Default: no filtering */
+  filter?: OrderFilterOpts
+}
+
+const defaultGetOrdersOpts = {
+  validate: true,
+  count: 50,
+  offset: 0,
+  sort: OrderSort.NEWEST,
+  filter: {},
 }
 
 export class SeaportGossipNode {
@@ -103,19 +206,148 @@ export class SeaportGossipNode {
     this.running = false
   }
 
-  public async getOrders(address: Address, validate = true) {
+  public async getOrders(address: Address, getOpts: GetOrdersOpts = {}) {
     if (!this.running) await this.start()
     if (!isValidAddress(address)) throw ErrorInvalidAddress
-    const orders = await this.prisma.order.findMany({
-      include: { offer: true, consideration: true },
-    })
-    if (!validate) return orders
+
+    const opts: Required<GetOrdersOpts> = {
+      ...defaultGetOrdersOpts,
+      ...getOpts,
+    }
+    if (opts.count > 1000)
+      throw new Error('getOrders count cannot exceed 1000 per query')
+
+    let prismaOpts: Prisma.OrderFindManyArgs = {
+      take: opts.count,
+      skip: opts.offset,
+      where: {
+        OR: [
+          { offer: { some: { token: address } } },
+          { consideration: { some: { token: address, } } }
+        ]
+      },
+      include: {
+        offer: true,
+        consideration: true,
+      },
+    }
+
+    switch (opts.sort) {
+    case OrderSort.NEWEST:
+      prismaOpts = { ...prismaOpts, orderBy: { ...prismaOpts.orderBy, metadata: { createdAt: 'desc' } } }
+      break
+    case OrderSort.OLDEST:
+      prismaOpts = { ...prismaOpts, orderBy: { ...prismaOpts.orderBy, metadata: { createdAt: 'asc' } } }
+      break
+    case OrderSort.ENDING_SOON:
+      // endTime < now + 1 minute, sort endTime desc 
+      break
+    case OrderSort.PRICE_ASC:
+      // current_price = (endPrice - startPrice) / (endTime - startTime)
+      // current_price asc
+      break
+    case OrderSort.PRICE_DESC:
+      // current_price desc
+      break
+    case OrderSort.RECENTLY_FULFILLED:
+      // fulfilledAt desc
+      break
+    case OrderSort.RECENTLY_VALIDATED:
+      // sort lastValidatedBlockNumber desc and isValidated = true
+      break
+    case OrderSort.HIGHEST_LAST_SALE:
+      // fulfilledPrice desc
+      break
+    }
+
+    for (const filterArg of Object.entries(opts.filter)) {
+      const [filter, arg]: [OrderFilter, string | bigint[] | undefined] =
+        filterArg as any // eslint-disable-line @typescript-eslint/no-explicit-any
+      switch (filter) {
+      case OrderFilter.OFFERER_ADDRESS:
+        if (arg === undefined) break
+        prismaOpts = {
+          ...prismaOpts,
+          where: { ...prismaOpts.where, offerer: arg as string },
+        }
+        break
+      case OrderFilter.TOKEN_IDS: {
+        /*
+        if (arg === undefined) break
+        const tokenIds = (arg as bigint[]).map((a) => ({
+          identifierOrCriteria: a.toString(),
+        }))
+        const foundCriteria = this.prisma.criteria.findMany({ include: { tokenIdForCriteria: { where: { OR: (arg as bigint[]).map((a) => ({
+          tokenId: a.toString() }) }
+        }}})
+        const criteria = foundCriteria.map((c) => ({
+          identifierOrCriteria: c.hash
+        }))
+        const OR = [...tokenIds, ...criteria]
+        prismaOpts = {
+          ...prismaOpts,
+          include: {
+            ...prismaOpts.include,
+            offer: {
+              where: {
+                OR
+              },
+            },
+          },
+        }
+        */
+        break
+      }
+      case OrderFilter.BUY_NOW:
+        // startTime >= now, endTime < now, isAuction: false
+        break
+      case OrderFilter.ON_AUCTION:
+        // startTime >= now, endTime < now, isAuction: true
+        break
+      case OrderFilter.SINGLE_ITEM:
+        // one consideration item
+        break
+      case OrderFilter.BUNDLES:
+        // more than one consideration item
+        break
+      case OrderFilter.CURRENCY:
+        if (arg === undefined) break
+        prismaOpts = {
+          ...prismaOpts,
+          include: { ...prismaOpts.include, consideration: { where: { token: arg as string } } },
+        }
+        break
+      case OrderFilter.HAS_OFFERS:
+        // multiple offer items, single consideration item
+        break
+      }
+    }
+
+    const orders = await this.prisma.order.findMany(prismaOpts)
+    if (opts.validate === false) return orders
     const validOrders = []
     for (const order of orders) {
-      const valid = await this.validator.validate(orderToJSON(order))
+      const valid = await this.validator.validate(orderToJSON(order as OrderWithItems))
       if (valid) validOrders.push(order)
     }
     return validOrders
+  }
+
+  public async getOrderByHash(hash: string) {
+    if (!this.running) await this.start()
+    const order = await this.prisma.order.findUnique({
+      where: { hash },
+      include: { offer: true, consideration: true },
+    })
+    if (order !== null) return order
+    // TODO try to get from network
+    return order
+  }
+
+  public async validateOrderByHash(hash: string) {
+    const order = await this.getOrderByHash(hash)
+    if (order === null) throw ErrorOrderNotFound
+    return this.validator.validate(orderToJSON(order))
   }
 
   public async addOrders(orders: OrderJSON[]) {
@@ -129,35 +361,43 @@ export class SeaportGossipNode {
   }
 
   private async _addOrder(order: OrderJSON, isPinned = false) {
-    const hash = await orderHash(order)
+    if (!instanceOfOrder(order)) return false
+
+    let hash: string
+    try {
+      hash = orderHash(order)
+    } catch {
+      return false
+    }
+
     const isValid = await this.validator.validate(order)
     const isExpired = this.validator.isExpired(order)
     const isCancelled = await this.validator.isCancelled(hash)
-    const metadata = { isValid, isPinned, isExpired, isCancelled }
-    const additionalRecipients =
-      order.additionalRecipients !== undefined
-        ? order.additionalRecipients.join(',')
-        : undefined
+
+    const isAuction = await this.validator.isAuction(order)
+    const isFullyFulfilled = await this.validator.isFullyFulfilled(hash)
+
+    const metadata = { isValid, isPinned, isExpired, isCancelled, isAuction, isFullyFulfilled }
+    
+    const prismaOrder = orderJSONToPrisma(order, hash)
+
     await this.prisma.order.upsert({
       where: { hash },
       update: { metadata: { update: metadata } },
       create: {
-        ...order,
-        hash,
-        offer: { create: order.offer },
-        consideration: { create: order.consideration },
-        additionalRecipients,
+        ...prismaOrder,
         metadata: {
           create: metadata,
         },
       },
     })
+
     return isValid
   }
 
   public async subscribe(
     address: Address,
-    events: OrderEvent[],
+    events: OrderEvent[] = this.opts.collectionEvents,
     _onEvent: (event: OrderEvent) => void
   ) {
     if (!this.running) await this.start()

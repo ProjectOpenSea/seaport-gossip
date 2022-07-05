@@ -15,8 +15,8 @@ async function main() {
           itemType: 1,
           token: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
           identifierOrCriteria: '0',
-          startAmount: '100000000000000000',
-          endAmount: '100000000000000000'
+          startAmount: BigInt('100000000000000000'),
+          endAmount: BigInt('100000000000000000')
         },
       },
       consideration: {
@@ -25,16 +25,16 @@ async function main() {
             itemType: 4,
             token: '0x3F53082981815Ed8142384EDB1311025cA750Ef1',
             identifierOrCriteria: '0',
-            startAmount: '1',
-            endAmount: '1',
+            startAmount: BigInt(1),
+            endAmount: BigInt(1),
             recipient: '0xf0E16c071E2cd421974dCb76d9af4DeDB578E059'
           },
           {
             itemType: 1,
             token: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
             identifierOrCriteria: '0',
-            startAmount: '2500000000000000',
-            endAmount: '2500000000000000',
+            startAmount: BigInt('2500000000000000'),
+            endAmount: BigInt('2500000000000000'),
             recipient: '0x8De9C5A032463C561423387a9648c5C7BCC5BC90'
           }
         ]
@@ -57,8 +57,10 @@ async function main() {
           isCancelled: false,
           isPinned: false,
           isRemoved: false,
+          isAuction: false,
+          isFullyFulfilled: false,
           lastValidatedBlockNumber: '1000000',
-          lastValidatedBlockHash: '0x0000000000000000000000000000000000000000000000000000000000000000'
+          lastValidatedBlockHash: '0x0000000000000000000000000000000000000000000000000000000000000000',
         }
       }
     },
@@ -76,8 +78,8 @@ async function main() {
           itemType: 1,
           token: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
           identifierOrCriteria: '0',
-          startAmount: '200000000000000000',
-          endAmount: '200000000000000000'
+          startAmount: BigInt('200000000000000000'),
+          endAmount: BigInt('200000000000000000')
         },
       },
       consideration: {
@@ -86,16 +88,16 @@ async function main() {
             itemType: 4,
             token: '0x3F53082981815Ed8142384EDB1311025cA750Ef1',
             identifierOrCriteria: '0',
-            startAmount: '1',
-            endAmount: '1',
+            startAmount: BigInt(1),
+            endAmount: BigInt(1),
             recipient: '0xf0E16c071E2cd421974dCb76d9af4DeDB578E059'
           },
           {
             itemType: 1,
             token: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
             identifierOrCriteria: '0',
-            startAmount: '5000000000000000',
-            endAmount: '5000000000000000',
+            startAmount: BigInt('5000000000000000'),
+            endAmount: BigInt('5000000000000000'),
             recipient: '0x8De9C5A032463C561423387a9648c5C7BCC5BC90'
           }
         ]
@@ -118,6 +120,8 @@ async function main() {
           isCancelled: false,
           isPinned: true,
           isRemoved: false,
+          isAuction: false,
+          isFullyFulfilled: false,
         }
       }
     },
