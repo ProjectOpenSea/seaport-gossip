@@ -18,8 +18,8 @@ model OfferItem {
   itemType             Int
   token                String
   identifierOrCriteria String
-  startAmount          BigInt
-  endAmount            BigInt
+  startAmount          String 
+  endAmount            String
 
   order     Order  @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
   orderHash String
@@ -31,8 +31,8 @@ model ConsiderationItem {
   itemType             Int
   token                String
   identifierOrCriteria String
-  startAmount          BigInt
-  endAmount            BigInt
+  startAmount          String
+  endAmount            String
 
   recipient String
 
@@ -61,12 +61,12 @@ model Order {
   additionalRecipients String? /// comma-separated
 
   // Advanced Order
-  numerator   BigInt?
-  denominator BigInt?
+  numerator   String?
+  denominator String?
   extraData   String?
 
   // Metadata
-  chainId       String /// string decimal
+  chainId  String /// string decimal
   metadata OrderMetadata?
 
 }
@@ -81,9 +81,9 @@ model OrderMetadata {
 
   isAuction Boolean /// when order is restricted and zone is an EOA. in the future may have whitelisted "auction" zones
 
-  isFullyFulfilled     Boolean
-  lastFulfilledAt      DateTime?
-  lastFulfilledPrice   BigInt?
+  isFullyFulfilled   Boolean
+  lastFulfilledAt    DateTime?
+  lastFulfilledPrice String?
 
   isPinned  Boolean @default(false)
   isRemoved Boolean @default(false)
@@ -91,7 +91,7 @@ model OrderMetadata {
   lastValidatedBlockNumber String?
   lastValidatedBlockHash   String?
 
-  order     Order  @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
+  order Order @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
 
 }
 
@@ -102,26 +102,9 @@ model NodeStatus {
 }
 
 model Criteria {
-  hash               String               @id
-  tokenIdForCriteria TokenIdForCriteria[]
-}
-
-model CriteriaTokenId {
-  tokenId            BigInt               @id
-  tokenIdForCriteria TokenIdForCriteria[]
-}
-
-model TokenIdForCriteria {
-  criteriaHash String
-  criteria     Criteria        @relation(fields: [criteriaHash], references: [hash], onDelete: Cascade)
-  tokenId      BigInt
-  token        CriteriaTokenId @relation(fields: [tokenId], references: [tokenId], onDelete: Cascade)
-
-  /// createdAt field for many to many workaround
-  /// https://github.com/MichalLytek/typegraphql-prisma/issues/19#issuecomment-907747110
-  createdAt   DateTime @default(now())
-
-  @@id([criteriaHash, tokenId])
+  hash     String @id
+  tokenIds String /// comma-separated within field, with starting and ending commas for queries %like% ',tokenId,'
+  token    String /// token address for the criteria (for more efficient querying)
 }
 
 model PeerStore {
@@ -140,4 +123,11 @@ model EthHeaders {
   parent    String
   timestamp DateTime
   logs      Bytes
+}
+
+model ERC20TokenPrices {
+  token String @id /// address, or 'NATIVE'
+  usdPricePerToken String
+  chainId String /// decimal string
+  updatedAt DateTime @updatedAt
 }

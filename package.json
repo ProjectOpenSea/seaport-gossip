@@ -20,13 +20,6 @@
     "seaport-gossip": "./dist/bin/cli.js"
   },
   "scripts": {
-    "postinstall": "yarn depFixes",
-    "depFixes": "yarn depFixYoga && yarn depFixYoga2 && yarn depFixYoga3 && yarn depFixGraphqlTools && yarn depFixGraphqlScalars",
-    "depFixYoga": "cp node_modules/@graphql-yoga/node/index.d.ts node_modules/@graphql-yoga/node/index.d.mts",
-    "depFixYoga2": "cp node_modules/@graphql-yoga/common/index.d.ts node_modules/@graphql-yoga/common/index.d.mts",
-    "depFixYoga3": "npx replace \"server'\" \"server.js'\" node_modules/@graphql-yoga/common/index.d.mts",
-    "depFixGraphqlTools": "cp node_modules/@graphql-tools/schema/index.d.ts node_modules/@graphql-tools/schema/index.d.mts",
-    "depFixGraphqlScalars": "cp node_modules/graphql-scalars/index.d.ts node_modules/graphql-scalars/index.d.mts",
     "build": "yarn prisma:generate && yarn build:ts",
     "build:ts": "tsc -p tsconfig.prod.json",
     "lint": "eslint src test prisma",
@@ -36,7 +29,7 @@
     "start:cli": "ts-node src/bin/cli.ts",
     "start:dev": "ts-node src/bin/start.ts",
     "start:devnet": "ts-node scripts/simulate/run-local-net.ts",
-    "test": "NODE_OPTIONS='--experimental-json-modules' mocha test/**/*.spec.ts"
+    "test": "NODE_ENV='development' NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 mocha test/**/*.spec.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -45,13 +38,13 @@
     "@chainsafe/libp2p-gossipsub": "^1.1.2",
     "@chainsafe/libp2p-noise": "^6.2.0",
     "@ethereumjs/trie": "^5.0.0-beta.1",
-    "@graphql-yoga/node": "^2.9.2",
+    "@graphql-yoga/node": "^2.13.3",
     "@libp2p/bootstrap": "^1.0.6",
     "@libp2p/interfaces": "^2.0.3",
     "@libp2p/kad-dht": "^1.0.16",
     "@libp2p/mplex": "^1.2.1",
     "@libp2p/websockets": "^1.0.9",
-    "@prisma/client": "^3.15.2",
+    "@prisma/client": "^4.1.0",
     "bigint-buffer": "^1.1.5",
     "class-validator": "^0.13.2",
     "ethers": "^5.6.8",
@@ -62,7 +55,7 @@
     "prom-client": "^14.0.1",
     "reflect-metadata": "^0.1.13",
     "type-graphql": "^1.1.1",
-    "typegraphql-prisma": "^0.20.4"
+    "typegraphql-prisma": "^0.21.0"
   },
   "devDependencies": {
     "@chainsafe/eslint-plugin-node": "^11.2.3",
@@ -79,7 +72,7 @@
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-import": "^2.26.0",
     "mocha": "^10.0.0",
-    "prisma": "^3.15.2",
+    "prisma": "^4.1.0",
     "ts-node": "^10.8.1",
     "typescript": "^4.7.3"
   },

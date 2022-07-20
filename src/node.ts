@@ -10,9 +10,10 @@ import { createLibp2p } from 'libp2p'
 import { DEFAULT_SEAPORT_ADDRESS } from './constants.js'
 import { server } from './db/index.js'
 import { ErrorInvalidAddress, ErrorOrderNotFound } from './errors.js'
-import { OrderEvent, OrderFilter, OrderSort } from './types.js'
+import { formatGetOrdersOpts, queryOrders } from './query/order.js'
+import { OrderEvent } from './types.js'
 import {
-  instanceOfOrder,
+  isOrderJSON,
   isValidAddress,
   orderHash,
   orderJSONToPrisma,
@@ -20,10 +21,13 @@ import {
 } from './util/index.js'
 import { OrderValidator } from './validate/index.js'
 
-import type { Address, OrderFilterOpts, OrderJSON , OrderWithItems } from './types.js'
+import type { GetOrdersOpts } from './query/order.js'
+import type {
+  Address,
+  OrderJSON,
+} from './types.js'
 import type { ConnectionManagerEvents } from '@libp2p/interfaces/connection-manager'
 import type { PeerId } from '@libp2p/interfaces/peer-id'
-import type { Prisma } from '@prisma/client'
 import type { ethers } from 'ethers'
 import type { Libp2p, Libp2pEvents } from 'libp2p'
 
@@ -124,31 +128,6 @@ const defaultOpts = {
   metricsAddress: null,
 }
 
-export interface GetOrdersOpts {
-  /** Re-validate every order before returning. Default: true */
-  validate?: boolean
-
-  /** Number of results to return. Default: 50 (\~50KB). Maximum: 1000 (~1MB) */
-  count?: number
-
-  /** Result offset for pagination. Default: 0 */
-  offset?: number
-
-  /** Sort option. Default: Newest */
-  sort?: OrderSort
-
-  /** Filter options. Default: no filtering */
-  filter?: OrderFilterOpts
-}
-
-const defaultGetOrdersOpts = {
-  validate: true,
-  count: 50,
-  offset: 0,
-  sort: OrderSort.NEWEST,
-  filter: {},
-}
-
 export class SeaportGossipNode {
   public libp2p!: Libp2p
   public running = false
@@ -210,126 +189,17 @@ export class SeaportGossipNode {
     if (!this.running) await this.start()
     if (!isValidAddress(address)) throw ErrorInvalidAddress
 
-    const opts: Required<GetOrdersOpts> = {
-      ...defaultGetOrdersOpts,
-      ...getOpts,
-    }
-    if (opts.count > 1000)
-      throw new Error('getOrders count cannot exceed 1000 per query')
+    const opts = formatGetOrdersOpts(getOpts)
+    const orders = await queryOrders(this.prisma, address, opts)
 
-    let prismaOpts: Prisma.OrderFindManyArgs = {
-      take: opts.count,
-      skip: opts.offset,
-      where: {
-        OR: [
-          { offer: { some: { token: address } } },
-          { consideration: { some: { token: address, } } }
-        ]
-      },
-      include: {
-        offer: true,
-        consideration: true,
-      },
-    }
-
-    switch (opts.sort) {
-    case OrderSort.NEWEST:
-      prismaOpts = { ...prismaOpts, orderBy: { ...prismaOpts.orderBy, metadata: { createdAt: 'desc' } } }
-      break
-    case OrderSort.OLDEST:
-      prismaOpts = { ...prismaOpts, orderBy: { ...prismaOpts.orderBy, metadata: { createdAt: 'asc' } } }
-      break
-    case OrderSort.ENDING_SOON:
-      // endTime < now + 1 minute, sort endTime desc 
-      break
-    case OrderSort.PRICE_ASC:
-      // current_price = (endPrice - startPrice) / (endTime - startTime)
-      // current_price asc
-      break
-    case OrderSort.PRICE_DESC:
-      // current_price desc
-      break
-    case OrderSort.RECENTLY_FULFILLED:
-      // fulfilledAt desc
-      break
-    case OrderSort.RECENTLY_VALIDATED:
-      // sort lastValidatedBlockNumber desc and isValidated = true
-      break
-    case OrderSort.HIGHEST_LAST_SALE:
-      // fulfilledPrice desc
-      break
-    }
-
-    for (const filterArg of Object.entries(opts.filter)) {
-      const [filter, arg]: [OrderFilter, string | bigint[] | undefined] =
-        filterArg as any // eslint-disable-line @typescript-eslint/no-explicit-any
-      switch (filter) {
-      case OrderFilter.OFFERER_ADDRESS:
-        if (arg === undefined) break
-        prismaOpts = {
-          ...prismaOpts,
-          where: { ...prismaOpts.where, offerer: arg as string },
-        }
-        break
-      case OrderFilter.TOKEN_IDS: {
-        /*
-        if (arg === undefined) break
-        const tokenIds = (arg as bigint[]).map((a) => ({
-          identifierOrCriteria: a.toString(),
-        }))
-        const foundCriteria = this.prisma.criteria.findMany({ include: { tokenIdForCriteria: { where: { OR: (arg as bigint[]).map((a) => ({
-          tokenId: a.toString() }) }
-        }}})
-        const criteria = foundCriteria.map((c) => ({
-          identifierOrCriteria: c.hash
-        }))
-        const OR = [...tokenIds, ...criteria]
-        prismaOpts = {
-          ...prismaOpts,
-          include: {
-            ...prismaOpts.include,
-            offer: {
-              where: {
-                OR
-              },
-            },
-          },
-        }
-        */
-        break
-      }
-      case OrderFilter.BUY_NOW:
-        // startTime >= now, endTime < now, isAuction: false
-        break
-      case OrderFilter.ON_AUCTION:
-        // startTime >= now, endTime < now, isAuction: true
-        break
-      case OrderFilter.SINGLE_ITEM:
-        // one consideration item
-        break
-      case OrderFilter.BUNDLES:
-        // more than one consideration item
-        break
-      case OrderFilter.CURRENCY:
-        if (arg === undefined) break
-        prismaOpts = {
-          ...prismaOpts,
-          include: { ...prismaOpts.include, consideration: { where: { token: arg as string } } },
-        }
-        break
-      case OrderFilter.HAS_OFFERS:
-        // multiple offer items, single consideration item
-        break
-      }
-    }
-
-    const orders = await this.prisma.order.findMany(prismaOpts)
     if (opts.validate === false) return orders
+
     const validOrders = []
     for (const order of orders) {
-      const valid = await this.validator.validate(orderToJSON(order as OrderWithItems))
+      const valid = await this.validator.validate(orderToJSON(order))
       if (valid) validOrders.push(order)
     }
+
     return validOrders
   }
 
@@ -347,7 +217,7 @@ export class SeaportGossipNode {
   public async validateOrderByHash(hash: string) {
     const order = await this.getOrderByHash(hash)
     if (order === null) throw ErrorOrderNotFound
-    return this.validator.validate(orderToJSON(order))
+    return this.validator.validate(order)
   }
 
   public async addOrders(orders: OrderJSON[]) {
@@ -361,7 +231,7 @@ export class SeaportGossipNode {
   }
 
   private async _addOrder(order: OrderJSON, isPinned = false) {
-    if (!instanceOfOrder(order)) return false
+    if (!isOrderJSON(order)) return false
 
     let hash: string
     try {
@@ -377,8 +247,15 @@ export class SeaportGossipNode {
     const isAuction = await this.validator.isAuction(order)
     const isFullyFulfilled = await this.validator.isFullyFulfilled(hash)
 
-    const metadata = { isValid, isPinned, isExpired, isCancelled, isAuction, isFullyFulfilled }
-    
+    const metadata = {
+      isValid,
+      isPinned,
+      isExpired,
+      isCancelled,
+      isAuction,
+      isFullyFulfilled,
+    }
+
     const prismaOrder = orderJSONToPrisma(order, hash)
 
     await this.prisma.order.upsert({

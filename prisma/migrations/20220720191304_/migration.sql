@@ -4,8 +4,8 @@ CREATE TABLE "OfferItem" (
     "itemType" INTEGER NOT NULL,
     "token" TEXT NOT NULL,
     "identifierOrCriteria" TEXT NOT NULL,
-    "startAmount" BIGINT NOT NULL,
-    "endAmount" BIGINT NOT NULL,
+    "startAmount" TEXT NOT NULL,
+    "endAmount" TEXT NOT NULL,
     "orderHash" TEXT NOT NULL,
     CONSTRAINT "OfferItem_orderHash_fkey" FOREIGN KEY ("orderHash") REFERENCES "Order" ("hash") ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -16,8 +16,8 @@ CREATE TABLE "ConsiderationItem" (
     "itemType" INTEGER NOT NULL,
     "token" TEXT NOT NULL,
     "identifierOrCriteria" TEXT NOT NULL,
-    "startAmount" BIGINT NOT NULL,
-    "endAmount" BIGINT NOT NULL,
+    "startAmount" TEXT NOT NULL,
+    "endAmount" TEXT NOT NULL,
     "recipient" TEXT NOT NULL,
     "orderHash" TEXT NOT NULL,
     CONSTRAINT "ConsiderationItem_orderHash_fkey" FOREIGN KEY ("orderHash") REFERENCES "Order" ("hash") ON DELETE CASCADE ON UPDATE CASCADE
@@ -37,8 +37,8 @@ CREATE TABLE "Order" (
     "zone" TEXT NOT NULL,
     "zoneHash" TEXT NOT NULL,
     "additionalRecipients" TEXT,
-    "numerator" BIGINT,
-    "denominator" BIGINT,
+    "numerator" TEXT,
+    "denominator" TEXT,
     "extraData" TEXT,
     "chainId" TEXT NOT NULL
 );
@@ -53,7 +53,7 @@ CREATE TABLE "OrderMetadata" (
     "isAuction" BOOLEAN NOT NULL,
     "isFullyFulfilled" BOOLEAN NOT NULL,
     "lastFulfilledAt" DATETIME,
-    "lastFulfilledPrice" BIGINT,
+    "lastFulfilledPrice" TEXT,
     "isPinned" BOOLEAN NOT NULL DEFAULT false,
     "isRemoved" BOOLEAN NOT NULL DEFAULT false,
     "lastValidatedBlockNumber" TEXT,
@@ -70,23 +70,9 @@ CREATE TABLE "NodeStatus" (
 
 -- CreateTable
 CREATE TABLE "Criteria" (
-    "hash" TEXT NOT NULL PRIMARY KEY
-);
-
--- CreateTable
-CREATE TABLE "CriteriaTokenId" (
-    "tokenId" BIGINT NOT NULL PRIMARY KEY
-);
-
--- CreateTable
-CREATE TABLE "TokenIdForCriteria" (
-    "criteriaHash" TEXT NOT NULL,
-    "tokenId" BIGINT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    PRIMARY KEY ("criteriaHash", "tokenId"),
-    CONSTRAINT "TokenIdForCriteria_criteriaHash_fkey" FOREIGN KEY ("criteriaHash") REFERENCES "Criteria" ("hash") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "TokenIdForCriteria_tokenId_fkey" FOREIGN KEY ("tokenId") REFERENCES "CriteriaTokenId" ("tokenId") ON DELETE CASCADE ON UPDATE CASCADE
+    "hash" TEXT NOT NULL PRIMARY KEY,
+    "tokenIds" TEXT NOT NULL,
+    "token" TEXT NOT NULL
 );
 
 -- CreateTable
@@ -108,6 +94,14 @@ CREATE TABLE "EthHeaders" (
     "parent" TEXT NOT NULL,
     "timestamp" DATETIME NOT NULL,
     "logs" BLOB NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "ERC20TokenPrices" (
+    "token" TEXT NOT NULL PRIMARY KEY,
+    "usdPricePerToken" TEXT NOT NULL,
+    "chainId" TEXT NOT NULL,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateIndex

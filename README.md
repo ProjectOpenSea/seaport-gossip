@@ -26,6 +26,7 @@ Seaport Gossip uses [libp2p][libp2p-website] with the following configuration:
   - Transport: websockets
   - Discovery: bootstrap
   - Content Routing: kad-dht
+  - Encryption: NOISE
   - Multiplexing: mplex
   - Pub-Sub: gossipsub
 
@@ -70,7 +71,7 @@ const node = new SeaportGossipNode(opts)
 
 const orders = await node.getOrders('0xabc', {
   sort: OrderSort.NEWEST,
-  filter: [OrderFilter.BUY_NOW],
+  filter: { OrderFilter.BUY_NOW: true },
 })
 console.log(orders)
 
@@ -109,31 +110,31 @@ Return stats for your node:
 
 ### Orders
 
-#### node.getOrders(address: string, { sort, filter, offset }): Promise<Order[]>
+#### `node.getOrders(address: string, { sort, filter, offset }): Promise<Order[]>`
 
-#### node.getOrderByHash(hash: string): Promise<Order | null>
+#### `node.getOrderByHash(hash: string): Promise<Order | null>`
 
-#### node.validateOrder(hash: string): Promise<boolean>
+#### `node.validateOrder(hash: string): Promise<boolean>`
 
-#### node.addOrders(orders: Order[]): Promise<number>
+#### `node.addOrders(orders: Order[]): Promise<number>`
 
 ### Criteria
 
-#### node.getCriteria(hash: string): Promise<CriteriaTokenIds | null>
+#### `node.getCriteria(hash: string): Promise<CriteriaTokenIds | null>`
 
-#### node.addCriteria(tokenIds: bigint[]): Promise<CriteriaHash>
+#### `node.addCriteria(tokenIds: bigint[]): Promise<CriteriaHash>`
 
-#### node.getProofs(criteriaHash: string, tokenIds: bigint[]): Promise<Proof[]>
+#### `node.getProofs(criteriaHash: string, tokenIds: bigint[]): Promise<Proof[]>`
 
 ### Events
 
-#### node.subscribe(address: string, events: OrderEvent[], onEvent: (event: OrderEvent) => void): Promise<boolean>
+#### `node.subscribe(address: string, events: OrderEvent[], onEvent: (event: OrderEvent) => void): Promise<boolean>`
 
-#### node.unsubscribe(address: string): Promise<boolean>
+#### `node.unsubscribe(address: string): Promise<boolean>`
 
 ### Miscellaneous
 
-#### node.stats(): Promise<NodeStats>
+#### `node.stats(): Promise<NodeStats>`
 
 ### Docs
 
@@ -176,7 +177,7 @@ You can query for orders, add new orders, and subscribe to events.
       {
         field: offer.currentPrice
         kind: GREATER_OR_EQUAL
-        value: 10000000000000000
+        value: '10000000000000000'
       }
     ]
   ) {

@@ -5,9 +5,9 @@ import IERC20 from '../contract-interfaces/ERC20.json' assert { type: 'json' }
 import IERC721 from '../contract-interfaces/ERC721.json' assert { type: 'json' }
 import ISeaport from '../contract-interfaces/Seaport.json' assert { type: 'json' }
 import { ItemType } from '../types.js'
-import { orderHash } from '../util/index.js'
+import { isOrderWithItems, orderHash, orderToJSON } from '../util/index.js'
 
-import type { Address, ItemJSON, OrderJSON , OrderStatus } from '../types.js'
+import type { Address, ItemJSON, OrderJSON , OrderStatus , OrderWithItems } from '../types.js'
 import type { PrismaClient } from '@prisma/client'
 import type { BigNumber } from 'ethers'
 
@@ -31,26 +31,34 @@ export class OrderValidator {
     this.provider = typeof opts.web3Provider === 'string' ? new ethers.providers.JsonRpcProvider(opts.web3Provider) : opts.web3Provider
   }
 
-  public async validate(order: OrderJSON, fulfiller?: Address, updateRecordInDB = false) {
-    return true /* eslint-disable no-unreachable */
+  public async validate(order: OrderJSON | OrderWithItems, fulfiller?: Address, updateRecordInDB = false) {
+    if (isOrderWithItems(order)) order = orderToJSON(order)
+
     const hash = orderHash(order)
+
     let isValid = !this.isExpired(order)
+
     if (isValid) {
       isValid = await this.isCancelled(hash)
     }
+
     if (isValid) {
       isValid = await this._isFillable(order, fulfiller)
     }
+
     if (isValid) {
       // TODO add next validation step here
     }
+
     if (updateRecordInDB) {
       await this.prisma.orderMetadata.update({
         where: { orderHash: hash },
         data: { isValid },
       })
     }
-    return isValid
+
+    return true
+    // return isValid
   }
 
   /**
@@ -79,7 +87,7 @@ export class OrderValidator {
   }
 
   public async isCancelled(hash: string) {
-    return false
+    return false /* eslint-disable no-unreachable */
     const status: OrderStatus = await this.seaport.getOrderStatus(hash)
     return status[1]
   }
@@ -132,7 +140,7 @@ export class OrderValidator {
     const { itemType, token, startAmount, endAmount, identifierOrCriteria } = item
     const { startTime, endTime } = order
     switch (itemType) {
-    case ItemType.ETH: {
+    case ItemType.NATIVE: {
       const amount = this._currentAmount(
         startAmount,
         endAmount,

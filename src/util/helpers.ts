@@ -1,15 +1,26 @@
 import { BigNumber, utils as ethersUtils } from 'ethers'
 
+import {
+  ItemType,
+  OrderFilter,
+  OrderSort,
+  Side
+} from '../types.js'
+
 import type {
+  Address,
   ConsiderationItem,
   ConsiderationItemJSON,
   OfferItem,
   OfferItemJSON,
   OrderJSON,
-  OrderWithItems,
-} from '../types.js'
+  OrderWithItems } from '../types.js'
+import type { PrismaClient } from '@prisma/client'
 
 const { keccak256, toUtf8Bytes } = ethersUtils
+
+/** The zero address */
+export const zeroAddress = `0x${'0'.repeat(40)}`
 
 /** Seaport contract - Type strings */
 const typeStrings = {
@@ -149,8 +160,8 @@ export const offerItemJSONToPrisma = (item: OfferItemJSON)  => ({
   itemType: item.itemType,
   token: item.token,
   identifierOrCriteria: item.identifierOrCriteria,
-  startAmount: BigInt(item.startAmount),
-  endAmount: BigInt(item.endAmount),
+  startAmount: item.startAmount,
+  endAmount: item.endAmount,
 })
 
 /**
@@ -160,8 +171,8 @@ export const considerationItemJSONToPrisma = (item: ConsiderationItemJSON)  => (
   itemType: item.itemType,
   token: item.token,
   identifierOrCriteria: item.identifierOrCriteria,
-  startAmount: BigInt(item.startAmount),
-  endAmount: BigInt(item.endAmount),
+  startAmount: item.startAmount,
+  endAmount: item.endAmount,
   recipient: item.recipient
 })
 
@@ -173,7 +184,7 @@ export const orderToJSON = (order: OrderWithItems): OrderJSON => {
   const formattedConsiderationItems = order.consideration.map((o) => considerationItemToJSON(o))
 
   const additionalRecipients =
-    order.additionalRecipients !== null
+    order.additionalRecipients !== undefined && order.additionalRecipients !== null 
       ? order.additionalRecipients.split(',')
       : undefined
 
@@ -202,8 +213,8 @@ export const orderJSONToPrisma = (order: OrderJSON, hash: string) => {
     offer: { create: order.offer.map((o) => offerItemJSONToPrisma(o)) },
     consideration: { create: order.consideration.map((c) => considerationItemJSONToPrisma(c)) },
     additionalRecipients,
-    numerator: typeof order.numerator === 'string' ? BigInt(order.numerator) : undefined,
-    denominator: typeof order.denominator === 'string' ? BigInt(order.denominator) : undefined,
+    numerator: order.numerator,
+    denominator: order.denominator,
   }
 }
 
@@ -214,7 +225,10 @@ export const isValidAddress = (address: string) => {
   return address[0] === '0' && address[1] === 'x' && address.length === 42
 }
 
-export const instanceOfOrder = (order: OrderJSON): order is OrderJSON => {
+/**
+ * Validates if an order is an instance of {@link OrderJSON}
+ */
+export const isOrderJSON = (order: OrderJSON): order is OrderJSON => {
   const keys = Object.keys(order)
 
   // Order must have 13 (basic) or 15 (advanced) properties
@@ -224,4 +238,126 @@ export const instanceOfOrder = (order: OrderJSON): order is OrderJSON => {
   if (keys.some((field) => !(field in order))) return false
 
   return true
+}
+
+/**
+ * Validates if an order is an instance of {@link OrderWithItems}
+ */
+export const isOrderWithItems = (order: OrderJSON | OrderWithItems): order is OrderWithItems => {
+  const keys = Object.keys(order)
+
+  // Order must have 13 (basic) or 15 (advanced) properties
+  if (keys.length !== 13 && keys.length !== 15) return false
+
+  // Order must have only expected fields
+  if (keys.some((field) => !(field in order))) return false
+
+  // Offer and consideration items should have id field if from DB
+  if (!order.offer.some((item) => (item as OfferItem).id === undefined)) return false
+  if (!order.consideration.some((item) => (item as ConsiderationItem).id === undefined)) return false
+
+  return true
+}
+
+/**
+ * Returns the current timestamp in resolution of seconds
+ */
+export const timestampNow = () => Math.round(Date.now() / 1000)
+
+/**
+ * Returns the price per token of the specified asset.
+ */
+export const pricePerERC20Token = (_erc20: Address) => {
+  return BigInt(25)
+}
+
+/**
+ * Returns the price per token of the specified asset.
+ */
+export const pricePerToken = (asset: ItemType.NATIVE | Address) => {
+  if (asset === ItemType.NATIVE) {
+    // Return native token (mainnet: ETH) price per dollar
+    return BigInt(1100)
+  }
+  // Get token price from oracle
+  return pricePerERC20Token(asset)
+}
+
+/**
+ * Returns an item's current price
+ */
+export const currentPrice = (item: OfferItem | ConsiderationItem, startTime: number, endTime: number) => {
+  const { startAmount, endAmount, itemType, token } = item
+  const currentAmount = (BigInt(endAmount) - BigInt(startAmount)) / BigInt(endTime - startTime)
+  if (itemType === ItemType.NATIVE) {
+    return currentAmount * pricePerToken(itemType)
+  } else if (itemType === ItemType.ERC20) {
+    return currentAmount * pricePerERC20Token(token)
+  }
+  return BigInt(0)
+}
+
+/**
+ * Returns the max from a list of bigints
+ */
+export const bigIntMax = (...args: bigint[]) => args.reduce((m, e) => e > m ? e : m)
+
+/**
+ * Returns the min from a list of bigints
+ */
+export const bigIntMin = (...args: bigint[]) => args.reduce((m, e) => e < m ? e : m)
+
+/**
+ * Returns a set of orders ordered by current price
+ */
+export const compareOrdersByCurrentPrice = (side: Side, sort: OrderSort.PRICE_ASC | OrderSort.PRICE_DESC) => {
+  return (a: OrderWithItems, b: OrderWithItems) => {
+    let itemA
+    let itemB
+    if (side === Side.BUY) {
+      itemA = a.offer.find((o) => o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20)
+      itemB = b.offer.find((o) => o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20)
+    } else if (side === Side.SELL) {
+      itemA = a.consideration.find((c) => c.recipient === a.offerer)
+      itemB = b.consideration.find((c) => c.recipient === b.offerer)
+    }
+    if (itemA === undefined) return -1
+    if (itemB === undefined) return 1
+    const currentPriceA = currentPrice(itemA, a.startTime, a.endTime)
+    const currentPriceB = currentPrice(itemB, b.startTime, b.endTime)
+    if (sort === OrderSort.PRICE_ASC) {
+      return currentPriceB - currentPriceA > 0 ? 1 : -1
+    } else {
+      return currentPriceA - currentPriceB > 0 ? -1 : 1
+    }
+  }
+}
+
+/**
+ * Returns order hashes for single or bundle items.
+ */
+export const orderHashesFor = async (prisma: PrismaClient, token: Address, side: Side, filter: OrderFilter.SINGLE_ITEM | OrderFilter.BUNDLES) => {
+  const itemType = filter === OrderFilter.SINGLE_ITEM ? { eq: 1 } : { gt: 1 }
+  const ordHash = filter === OrderFilter.SINGLE_ITEM ? { _count: { equals: 1 } } : { _count: { gt: 1 } }
+  let items
+  if (side === Side.BUY) {
+    items = await prisma.offerItem.groupBy({
+      by: ['orderHash', 'itemType'],
+      where: { token },
+      having: {
+        itemType,
+        orderHash: ordHash
+      },
+    })
+  } else {
+    items = await prisma.considerationItem.groupBy({
+      by: ['orderHash', 'itemType'],
+      where: { token },
+      having: {
+        itemType,
+        orderHash: ordHash
+      }
+    })
+  }
+  return items.map((i) => i.orderHash)
 }

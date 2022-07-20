@@ -2,22 +2,30 @@ import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
 
 import { ErrorInvalidAddress } from '../dist/errors.js'
-import { SeaportGossipNode } from '../dist/index.js'
-import { OrderEvent, OrderSort } from '../dist/types.js'
+import {
+  SeaportGossipNode,
+  compareOrdersByCurrentPrice,
+  zeroAddress,
+} from '../dist/index.js'
+import { OrderEvent, OrderFilter, OrderSort, Side } from '../dist/types.js'
 
 import invalidBasicOrders from './testdata/orders/basic-invalid.json' assert { type: 'json' }
 import validBasicOrders from './testdata/orders/basic-valid.json' assert { type: 'json' }
-import { MockProvider, truncateTables } from './util.js'
+import { randomOrder, simulateOrderFulfillment, simulateOrderValidation, truncateTables } from './util/db.js'
+import { MockProvider } from './util/provider.js'
 
-import type { GetOrdersOpts } from '../dist/node.js'
+import type { GetOrdersOpts } from '../dist/query/order.js'
+import type { PrismaClient } from '@prisma/client'
 
 chai.use(chaiAsPromised)
 
 describe('SeaportGossipNode', () => {
   const opts = { web3Provider: new MockProvider('mainnet') }
   const node = new SeaportGossipNode(opts)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const prisma: PrismaClient = (node as any).prisma
 
-  beforeEach(async () => {
+  afterEach(async () => {
     await truncateTables(node)
   })
 
@@ -36,18 +44,42 @@ describe('SeaportGossipNode', () => {
 
   it('should add and get orders', async () => {
     const numValid = await node.addOrders(validBasicOrders)
-    expect(numValid).to.eq(4)
+    expect(numValid).to.eq(10)
 
-    const orders = await node.getOrders(
+    /* Side.SELL (default) */
+    let orders = await node.getOrders(
       '0x3F53082981815Ed8142384EDB1311025cA750Ef1'
     )
+    expect(orders.length).to.eq(1)
+    orders = await node.getOrders(
+      '0x3F53082981815Ed8142384EDB1311025cA750Ef1',
+      { side: Side.SELL }
+    )
+    expect(orders.length).to.eq(1)
+    orders = await node.getOrders('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2')
+    expect(orders.length).to.eq(3)
+
+    /* Side.BUY */
+    orders = await node.getOrders(
+      '0x3F53082981815Ed8142384EDB1311025cA750Ef1',
+      { side: Side.BUY }
+    )
+    expect(orders.length).to.eq(3)
+    orders = await node.getOrders(
+      '0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d',
+      { side: Side.BUY }
+    )
+    expect(orders.length).to.eq(2)
+
+    /* Zero address: orders with ETH token */
+    orders = await node.getOrders(zeroAddress, { side: Side.SELL })
+    expect(orders.length).to.eq(2)
+    orders = await node.getOrders(zeroAddress, { side: Side.BUY })
     expect(orders.length).to.eq(4)
 
     await expect(node.getOrders('0xinvalid')).to.eventually.be.rejectedWith(
       ErrorInvalidAddress
     )
-    expect((await node.getOrders(`0x${'0'.repeat(40)}`)).length).to.eq(0)
-
     await node.stop()
   })
 
@@ -127,130 +159,158 @@ describe('SeaportGossipNode', () => {
 
     const contractAddr = '0x3F53082981815Ed8142384EDB1311025cA750Ef1'
 
-    /* Test sort options */
+    for (const side of [Side.BUY, Side.SELL]) {
+      /* Test sort options */
 
-    // Default sort: NEWEST
-    let getOpts: GetOrdersOpts = {}
-    const defaultSortOrders = await node.getOrders(contractAddr, getOpts)
-    expect(defaultSortOrders[0].hash).to.eq('0x9d2ef6d11611f29f8a5a41c400558b5e343d7bb1a15ebf0bd023471d5a8d4282')
+      // Default sort: NEWEST
+      let getOpts: GetOrdersOpts = { side }
+      const ordersDefaultSort = await node.getOrders(contractAddr, getOpts)
+      let orderMetadata = await prisma.orderMetadata.findMany({
+        where: { OR: ordersDefaultSort.map((o) => ({ orderHash: o.hash })) },
+        orderBy: { createdAt: 'desc' },
+      })
+      expect(ordersDefaultSort.map((o) => o.hash)).to.deep.eq(
+        orderMetadata.map((o) => o.orderHash)
+      )
 
-    getOpts = { sort: OrderSort.NEWEST }
-    let orders = await node.getOrders(contractAddr, getOpts)
-    expect(orders[0].hash).to.eq('0x9d2ef6d11611f29f8a5a41c400558b5e343d7bb1a15ebf0bd023471d5a8d4282')
-    expect(orders).to.deep.eq(defaultSortOrders)
+      getOpts = { side, sort: OrderSort.NEWEST }
+      let orders = await node.getOrders(contractAddr, getOpts)
+      expect(orders).to.deep.eq(ordersDefaultSort)
 
-    /*
-    getOpts = { sort: OrderSort.OLDEST }
-    orders = await node.getOrders(contractAddr, getOpts)
-    expect(orders[0].hash).to.eq('')
+      getOpts = { side, sort: OrderSort.OLDEST }
+      orders = await node.getOrders(contractAddr, getOpts)
+      orderMetadata = await prisma.orderMetadata.findMany({
+        where: { OR: ordersDefaultSort.map((o) => ({ orderHash: o.hash })) },
+        orderBy: { createdAt: 'asc' },
+      })
+      expect(orders.map((o) => o.hash)).to.deep.eq(
+        orderMetadata.map((o) => o.orderHash)
+      )
 
-    getOpts = { sort: OrderSort.ENDING_SOON }
-    orders = await node.getOrders(contractAddr, getOpts)
-    expect(orders[0].hash).to.eq('')
+      getOpts = { side, sort: OrderSort.ENDING_SOON }
+      orders = await node.getOrders(contractAddr, getOpts)
+      expect(orders).to.deep.eq(orders.sort((a, b) => b.endTime - a.endTime))
 
-    getOpts = { sort: OrderSort.PRICE_ASC }
-    orders = await node.getOrders(contractAddr, getOpts)
-    expect(orders[0].hash).to.eq('')
+      getOpts = { side, sort: OrderSort.PRICE_ASC }
+      orders = await node.getOrders(contractAddr, getOpts)
+      expect(orders).to.deep.eq(
+        orders.sort(compareOrdersByCurrentPrice(side, OrderSort.PRICE_ASC))
+      )
 
-    getOpts = { sort: OrderSort.PRICE_DESC }
-    orders = await node.getOrders(contractAddr, getOpts)
-    expect(orders[0].hash).to.eq('')
+      getOpts = { side, sort: OrderSort.PRICE_DESC }
+      orders = await node.getOrders(contractAddr, getOpts)
+      expect(orders).to.deep.eq(
+        orders.sort(compareOrdersByCurrentPrice(side, OrderSort.PRICE_DESC))
+      )
 
-    getOpts = { sort: OrderSort.RECENTLY_FULFILLED }
-    orders = await node.getOrders(contractAddr, getOpts)
-    expect(orders[0].hash).to.eq('')
+      let order = await randomOrder(prisma)
+      await simulateOrderFulfillment(prisma, order.hash, '1000000')
+      getOpts = { side, sort: OrderSort.RECENTLY_FULFILLED, count: 1 }
+      const itemSide = side === Side.BUY ? 'consideration' : 'offer'
+      orders = await node.getOrders(order[itemSide][0].token, getOpts)
+      expect(orders).to.deep.eq([order])
 
-    getOpts = { sort: OrderSort.RECENTLY_VALIDATED }
-    orders = await node.getOrders(contractAddr, getOpts)
-    expect(orders[0].hash).to.eq('')
+      order = await randomOrder(prisma)
+      await simulateOrderValidation(prisma, order.hash, true)
+      getOpts = { side, sort: OrderSort.RECENTLY_VALIDATED, count: 1 }
+      orders = await node.getOrders(order[itemSide][0].token, getOpts)
+      expect(orders).to.deep.eq([order])
 
-    getOpts = { sort: OrderSort.HIGHEST_LAST_SALE }
-    orders = await node.getOrders(contractAddr, getOpts)
-    expect(orders[0].hash).to.eq('')
-    */
+      order = await randomOrder(prisma)
+      await simulateOrderFulfillment(prisma, order.hash, '100000000')
+      getOpts = { side, sort: OrderSort.HIGHEST_LAST_SALE, count: 1 }
+      orders = await node.getOrders(order[itemSide][0].token, getOpts)
+      expect(orders).to.deep.eq([order])
 
-    /* Test filter options */
+      /* Test filter options */
 
-    // Default filter: none
-    getOpts = { filter: {} }
-    orders = await node.getOrders(contractAddr, getOpts)
-    expect(orders[0].hash).to.eq('0x9d2ef6d11611f29f8a5a41c400558b5e343d7bb1a15ebf0bd023471d5a8d4282')
-    expect(orders).to.deep.eq(defaultSortOrders)
+      // Default filter: none
+      getOpts = { side, filter: {} }
+      orders = await node.getOrders(contractAddr, getOpts)
+      expect(orders).to.deep.eq(ordersDefaultSort)
+      
+      // should ignore filter arg of false
+      getOpts = { side, filter: { [OrderFilter.BUY_NOW]: false } }
+      orders = await node.getOrders(contractAddr, getOpts)
+      expect(orders).to.deep.eq(ordersDefaultSort)
 
-    /*
-    getOpts = { filter: { [OrderFilter.OFFERER_ADDRESS]: '0xabc' } }
+      /*
+    getOpts = { side, filter: { [OrderFilter.OFFERER_ADDRESS]: '0xabc' } }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
 
     getOpts = {
-      filter: { [OrderFilter.TOKEN_IDS]: [0, 15, 25].map((n) => BigInt(n)) },
+      filter: { [OrderFilter.TOKEN_ID]: BigInt(0) },
     }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
 
-    getOpts = { filter: { [OrderFilter.BUY_NOW]: undefined } }
+    getOpts = { side, filter: { [OrderFilter.BUY_NOW]: true } }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
 
     getOpts = {
       filter: {
         [OrderFilter.OFFERER_ADDRESS]: '0xabc',
-        [OrderFilter.BUY_NOW]: undefined,
+        [OrderFilter.BUY_NOW]: true,
       },
     }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
 
     getOpts = {
+      side,
       filter: {
         [OrderFilter.OFFERER_ADDRESS]: '0xabc',
-        [OrderFilter.ON_AUCTION]: undefined,
+        [OrderFilter.ON_AUCTION]: true,
       },
     }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
 
-    getOpts = { filter: { [OrderFilter.SINGLE_ITEM]: undefined } }
+    getOpts = { side, filter: { [OrderFilter.SINGLE_ITEM]: true } }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
 
-    getOpts = { filter: { [OrderFilter.BUNDLES]: undefined } }
+    getOpts = { side, filter: { [OrderFilter.BUNDLES]: true } }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
 
     const wethAddress = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2'
-    getOpts = { filter: { [OrderFilter.CURRENCY]: wethAddress } }
+    getOpts = { side, filter: { [OrderFilter.CURRENCY]: wethAddress } }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
 
     getOpts = {
+      side,
       filter: {
         [OrderFilter.CURRENCY]: wethAddress,
-        [OrderFilter.BUY_NOW]: undefined,
+        [OrderFilter.BUY_NOW]: true,
       },
     }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
     */
 
-    /* Test sort and filter options together */
+      /* Test sort and filter options together */
 
-    /*
+      /*
     getOpts = {
+      side,
       sort: OrderSort.OLDEST,
       filter: {
         [OrderFilter.OFFERER_ADDRESS]: '0xabc',
-        [OrderFilter.BUY_NOW]: undefined,
+        [OrderFilter.BUY_NOW]: true,
       },
     }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
 
-    getOpts = { sort: OrderSort.PRICE_DESC, filter: { [OrderFilter.CURRENCY]: wethAddress } }
+    getOpts = { side, sort: OrderSort.PRICE_DESC, filter: { [OrderFilter.CURRENCY]: wethAddress } }
     orders = await node.getOrders(contractAddr, getOpts)
     expect(orders[0].hash).to.eq('')
     */
-
+    }
     await node.stop()
   })
 })

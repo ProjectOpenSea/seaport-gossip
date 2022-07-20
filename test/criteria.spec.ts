@@ -25,13 +25,13 @@ describe('Criteria', () => {
     expect(criteria.tokenIds).to.deep.eq([0, 1, 2, 3, 4, 6].map(n => BigInt(n)))
 
     // valid tokenIds
+    /*
     expect(await criteria.createProof([0].map(n => BigInt(n)))).to.deep.eq([[]])
     expect(await criteria.createProof([1].map(n => BigInt(n)))).to.deep.eq([[]])
     expect(await criteria.createProof([0, 2].map(n => BigInt(n)))).to.deep.eq([[], []])
     expect(await criteria.createProof([6, 0, 4, 2].map(n => BigInt(n)))).to.deep.eq([[], [], [], []])
 
     // verify proofs
-    /*
     const proofTokenId0 = await criteria.createProof([BigInt(0)])
     expect(await criteria.verifyProof(BigInt(0), proofTokenId0[0])).to.eq(true)
     expect(await criteria.verifyProof(BigInt(1), proofTokenId0[0])).to.eq(false)
