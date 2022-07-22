@@ -337,7 +337,7 @@ export const compareOrdersByCurrentPrice = (side: Side, sort: OrderSort.PRICE_AS
  * Returns order hashes for single or bundle items.
  */
 export const orderHashesFor = async (prisma: PrismaClient, token: Address, side: Side, filter: OrderFilter.SINGLE_ITEM | OrderFilter.BUNDLES) => {
-  const itemType = filter === OrderFilter.SINGLE_ITEM ? { eq: 1 } : { gt: 1 }
+  const itemType = filter === OrderFilter.SINGLE_ITEM ? { equals: 1 } : { gt: 1 }
   const ordHash = filter === OrderFilter.SINGLE_ITEM ? { _count: { equals: 1 } } : { _count: { gt: 1 } }
   let items
   if (side === Side.BUY) {

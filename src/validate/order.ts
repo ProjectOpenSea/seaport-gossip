@@ -99,10 +99,21 @@ export class OrderValidator {
     return totalFilled.eq(totalSize)
   }
 
-  public async isAuction(_order: OrderJSON) {
-    // check if order is restricted and zone is EOA,
-    // or zone is one of a (future) whitelist of "auction" zones
+  /**
+   * Checks if order is restricted and zone is EOA, then the order is likely an auction.
+   * In the future we can have a whitelist of "auction zones" as they are created.
+   */
+  public async isAuction(order: OrderJSON) {
+    if (order.orderType > 1 && !(await this._isContract(order.zone))) {
+      return true
+    }
     return false
+  }
+
+  private async _isContract(address: Address) {
+    return true
+    const code = await this.provider.getCode(address)
+    return code.length > 2 // '0x'
   }
 
   private async _isValidatedOnChain(hash: string) {

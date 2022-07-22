@@ -1,3 +1,4 @@
+import { ErrorTokenIdNumberTooLarge } from '../errors.js'
 import { OrderFilter, OrderSort, Side } from '../types.js'
 import { compareOrdersByCurrentPrice, orderHashesFor, timestampNow } from '../util/helpers.js'
 
@@ -44,6 +45,8 @@ export const formatGetOrdersOpts = (getOpts: GetOrdersOpts): Required<GetOrdersO
 export const queryOrders = async (prisma: PrismaClient, address: Address, opts: Required<GetOrdersOpts>) => {
   if (opts.count > 1000)
     throw new Error('getOrders count cannot exceed 1000 per query')
+
+  const itemSide = opts.side === Side.BUY ? 'consideration' : 'offer'
 
   const side =
     opts.side === Side.BUY
@@ -130,14 +133,18 @@ export const queryOrders = async (prisma: PrismaClient, address: Address, opts: 
     // Skip filter if arg is false or undefined
     if (arg === false || arg === undefined) continue
 
-    switch (filter) {
-    case OrderFilter.OFFERER_ADDRESS:
+    switch (+filter) {
+    case OrderFilter.OFFERER_ADDRESS: {
       prismaOpts = {
         ...prismaOpts,
         where: { ...prismaOpts.where, offerer: arg as string },
       }
       break
+    }
     case OrderFilter.TOKEN_ID: {
+      if (typeof arg === 'number' && !Number.isSafeInteger(arg)) {
+        throw ErrorTokenIdNumberTooLarge
+      }
       const foundCriteria = await prisma.criteria.findMany({
         where: {
           tokenIds: { contains: `,${arg.toString()},` },
@@ -147,12 +154,14 @@ export const queryOrders = async (prisma: PrismaClient, address: Address, opts: 
       const criteria = foundCriteria.map((c) => c.hash)
       prismaOpts = {
         ...prismaOpts,
-        include: {
-          ...prismaOpts.include,
-          [opts.side === Side.BUY ? 'offer' : 'consideration']: {
-            where: {
-              identifierOrCriteria: { in: [arg, ...criteria] },
-            },
+        where: {
+          ...prismaOpts.where,
+          [itemSide]: {
+            ...prismaOpts.where?.[itemSide],
+            some: { 
+              ...prismaOpts.where?.[itemSide]?.some,
+              identifierOrCriteria: { in: [arg.toString(), ...criteria] },
+            }
           },
         },
       }
@@ -214,10 +223,10 @@ export const queryOrders = async (prisma: PrismaClient, address: Address, opts: 
     case OrderFilter.CURRENCY:
       prismaOpts = {
         ...prismaOpts,
-        include: {
-          ...prismaOpts.include,
-          [opts.side === Side.BUY ? 'offer' : 'consideration']: {
-            where: { token: arg as string },
+        where: {
+          ...prismaOpts.where,
+          [itemSide]: {
+            some: { token: arg as string },
           },
         },
       }
@@ -235,7 +244,7 @@ export const queryOrders = async (prisma: PrismaClient, address: Address, opts: 
   ) {
     orders = orders.sort(compareOrdersByCurrentPrice(opts.side, opts.sort))
 
-    // Re-apply count and offset
+    // Apply count and offset
     orders = orders.slice(opts.offset, opts.offset + opts.count)
   }
 

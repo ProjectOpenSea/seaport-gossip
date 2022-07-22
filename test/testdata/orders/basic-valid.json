@@ -180,7 +180,7 @@
     ],
     "consideration": [
       {
-        "itemType": 4,
+        "itemType": 2,
         "token": "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
         "identifierOrCriteria": "75",
         "startAmount": "1",
@@ -220,7 +220,7 @@
     ],
     "consideration": [
       {
-        "itemType": 4,
+        "itemType": 2,
         "token": "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
         "identifierOrCriteria": "75",
         "startAmount": "1",
@@ -288,7 +288,7 @@
     "chainId": "1"
   },
   {
-    "offerer": "0x9F81037A48d376F104a974C26E3D02307Ac6bFb2",
+    "offerer": "0xEA674fdDe714fd979de3EdF0F56AA9716B898ec8",
     "offer": [
       {
         "itemType": 2,
@@ -328,7 +328,7 @@
     "chainId": "1"
   },
   {
-    "offerer": "0x9F81037A48d376F104a974C26E3D02307Ac6bFb2",
+    "offerer": "0xEA674fdDe714fd979de3EdF0F56AA9716B898ec8",
     "offer": [
       {
         "itemType": 2,

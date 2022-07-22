@@ -70,7 +70,7 @@ export enum Side {
  */
 export interface OrderFilterOpts {
   [OrderFilter.OFFERER_ADDRESS]?: Address
-  [OrderFilter.TOKEN_ID]?: bigint
+  [OrderFilter.TOKEN_ID]?: number | bigint | string
   [OrderFilter.BUY_NOW]?: boolean
   [OrderFilter.ON_AUCTION]?: boolean
   [OrderFilter.SINGLE_ITEM]?: boolean

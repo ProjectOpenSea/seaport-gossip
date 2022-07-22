@@ -74,3 +74,31 @@ export const simulateOrderValidation = async (
     data: { isValid, lastValidatedBlockNumber },
   })
 }
+
+/**
+ * Sets order metadata isAuction value
+ */
+export const setOrderAsAuction = async (
+  prisma: PrismaClient,
+  orderHash: string,
+  isAuction: boolean
+) => {
+  return prisma.orderMetadata.update({
+    where: { orderHash },
+    data: { isAuction },
+  })
+}
+
+/**
+ * Gets order metadata isAuction value
+ */
+export const orderIsAuction = async (
+  prisma: PrismaClient,
+  orderHash: string,
+) => {
+  const metadata = await prisma.orderMetadata.findFirst({
+    where: { orderHash },
+  })
+  if (metadata === null) throw new Error('order metadata not found')
+  return metadata.isAuction === true
+}
