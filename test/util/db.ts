@@ -61,11 +61,12 @@ export const simulateOrderValidation = async (
   orderHash: string,
   isValid: boolean
 ) => {
-  const mostRecentlyValidatedBlockNumber = (
-    await prisma.orderMetadata.findFirst({
-      orderBy: { lastValidatedBlockNumber: 'desc' },
-    })
-  )?.lastValidatedBlockNumber ?? '0'
+  const mostRecentlyValidatedBlockNumber =
+    (
+      await prisma.orderMetadata.findFirst({
+        orderBy: { lastValidatedBlockNumber: 'desc' },
+      })
+    )?.lastValidatedBlockNumber ?? '0'
   const lastValidatedBlockNumber = (
     BigInt(mostRecentlyValidatedBlockNumber) + 1n
   ).toString()
@@ -94,7 +95,7 @@ export const setOrderAsAuction = async (
  */
 export const orderIsAuction = async (
   prisma: PrismaClient,
-  orderHash: string,
+  orderHash: string
 ) => {
   const metadata = await prisma.orderMetadata.findFirst({
     where: { orderHash },

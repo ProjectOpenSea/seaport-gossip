@@ -1,14 +1,15 @@
 // import { GossipSub } from '@chainsafe/libp2p-gossipsub'
 import { Noise } from '@chainsafe/libp2p-noise'
-import { Bootstrap } from '@libp2p/bootstrap'
+// import { Bootstrap } from '@libp2p/bootstrap'
 // import { KadDHT } from '@libp2p/kad-dht'
 import { Mplex } from '@libp2p/mplex'
 import { WebSockets } from '@libp2p/websockets'
+import { Multiaddr } from '@multiformats/multiaddr'
 import { PrismaClient } from '@prisma/client'
 import { createLibp2p } from 'libp2p'
 
 import { DEFAULT_SEAPORT_ADDRESS } from './constants.js'
-import { server } from './db/index.js'
+import { startGraphqlServer } from './db/index.js'
 import { ErrorInvalidAddress, ErrorOrderNotFound } from './errors.js'
 import { formatGetOrdersOpts, queryOrders } from './query/order.js'
 import { OrderEvent } from './types.js'
@@ -19,19 +20,21 @@ import {
   orderJSONToPrisma,
   orderToJSON,
 } from './util/index.js'
+import { Color, createWinstonLogger } from './util/log.js'
 import { OrderValidator } from './validate/index.js'
 
 import type { GetOrdersOpts } from './query/order.js'
-import type {
-  Address,
-  OrderJSON,
-} from './types.js'
+import type { Address, OrderJSON } from './types.js'
 import type { ConnectionManagerEvents } from '@libp2p/interfaces/connection-manager'
 import type { PeerId } from '@libp2p/interfaces/peer-id'
 import type { ethers } from 'ethers'
 import type { Libp2p, Libp2pEvents } from 'libp2p'
+import type winston from 'winston'
 
-interface SeaportGossipNodeOpts {
+/**
+ * Options for initializing a node.
+ */
+export interface SeaportGossipNodeOpts {
   /**
    * Ethereum JSON-RPC url for order validation, or a custom {@link ethers} provider.
    * This can also be a url specified via environment variable `WEB3_PROVIDER`.
@@ -44,6 +47,45 @@ interface SeaportGossipNodeOpts {
    * Default: randomly generated
    */
   peerId?: PeerId | null
+
+  /**
+   * The host to use for the websocket connection.
+   * Default: 0.0.0.0
+   */
+  hostname?: string
+
+  /**
+   * The port to use for the websocket connection.
+   * Default: 8998
+   */
+  port?: number
+
+  /**
+   * The GraphQL port to use.
+   * Default: 4000
+   */
+  graphqlPort?: number
+
+  /**
+   * Bootnodes to connect to on start.
+   * Format: /ip4/hostname/tcp/port/ws
+   * Default: OpenSea signaling server
+   */
+  bootnodes?: string[] | Multiaddr[]
+
+  /**
+   * Minimum peers to be connected to.
+   * If peers fall below this number, will ask connected peers for more connections.
+   * Default: 3
+   */
+  minPeers?: number
+
+  /**
+   * Maximum peers to be connected to.
+   * If peers exceed this number, will drop oldest peers.
+   * Default: 7
+   */
+  maxPeers?: number
 
   /**
    * Collections to start watching on start.
@@ -111,11 +153,37 @@ interface SeaportGossipNodeOpts {
    * Default: disabled
    */
   metricsAddress?: string | null
+
+  /**
+   * Optionally pass a custom {@link winston.Logger}
+   */
+  logger?: winston.Logger | null
+
+  /**
+   * Minimum log level to output
+   * Default: warn
+   */
+  logLevel?: string
+
+  /**
+   * Custom logger label color
+   * Default: Color.FG_WHITE
+   */
+  logColor?: Color
 }
 
+/**
+ * Default options for initializing a node when unspecified in {@link SeaportGossipNodeOpts}.
+ */
 const defaultOpts = {
   web3Provider: process.env.WEB3_PROVIDER ?? '',
   peerId: null,
+  hostname: '0.0.0.0',
+  port: 8998,
+  graphqlPort: 4000,
+  bootnodes: [],
+  minPeers: 3,
+  maxPeers: 7,
   collectionAddresses: [],
   collectionEvents: Object.values(OrderEvent) as OrderEvent[],
   maxOrders: 100_000,
@@ -126,21 +194,51 @@ const defaultOpts = {
   maxRPCRequestsPerDay: 25_000,
   seaportAddress: process.env.SEAPORT_ADDRESS ?? DEFAULT_SEAPORT_ADDRESS,
   metricsAddress: null,
+  logger: null,
+  logLevel: 'warn',
+  logColor: Color.FG_WHITE,
 }
 
+/**
+ * Default OpenSea bootstrap signaling servers
+ * Format: `[chainId]: dnsaddr`
+ */
+const _bootstrapPeers = {
+  [1]: '/dnsaddr/eth-mainnet.bootstrap.seaport.opensea.io/p2p/Qm...',
+  [5]: '/dnsaddr/eth-goerli.bootstrap.seaport.opensea.io/p2p/Qm...',
+  [10]: '/dnsaddr/optimism-mainnet.bootstrap.seaport.opensea.io/p2p/Qm...',
+  [420]: '/dnsaddr/optimism-goerli.bootstrap.seaport.opensea.io/p2p/Qm...',
+  [137]: '/dnsaddr/polygon-mainnet.bootstrap.seaport.opensea.io/p2p/Qm...',
+  [80001]: '/dnsaddr/polygon-mumbai.bootstrap.seaport.opensea.io/p2p/Qm...',
+}
+
+/**
+ * SeaportGossipNode is a p2p client for sharing Seaport orders.
+ */
 export class SeaportGossipNode {
   public libp2p!: Libp2p
   public running = false
   public subscriptions: { [key: Address]: OrderEvent[] } = {}
 
   private opts: Required<SeaportGossipNodeOpts>
-  private graphql: typeof server
+  private graphql: ReturnType<typeof startGraphqlServer>
   private prisma: PrismaClient
   private validator: OrderValidator
+  private logger: winston.Logger
 
   constructor(opts: SeaportGossipNodeOpts = {}) {
     this.opts = Object.freeze({ ...defaultOpts, ...opts })
-    this.graphql = server
+    this.logger =
+      this.opts.logger ??
+      createWinstonLogger(
+        { level: this.opts.logLevel },
+        this.opts.peerId?.toString(),
+        this.opts.logColor
+      )
+    this.graphql = startGraphqlServer({
+      port: this.opts.graphqlPort,
+      logger: this.logger,
+    })
     this.prisma = new PrismaClient()
     this.validator = new OrderValidator({
       prisma: this.prisma,
@@ -149,40 +247,74 @@ export class SeaportGossipNode {
     })
   }
 
+  /**
+   * Start the node.
+   */
   public async start() {
     if (this.running) return
+
     const libp2pOpts = {
+      peerId: this.opts.peerId ?? undefined,
       addresses: {
-        listen: ['/ip4/127.0.0.1/tcp/8000/ws'],
+        listen: [`/ip4/${this.opts.hostname}/tcp/${this.opts.port}/ws`],
       },
       transports: [new WebSockets()],
       connectionEncryption: [new Noise()],
       streamMuxers: [new Mplex()],
-      peerDiscovery: [
-        new Bootstrap({
-          list: [
-            // /dnsaddr/bootstrap.seaport.opensea.io/p2p/Qm
-            '/dns4/127.0.0.1/tcp/9090/ws/',
-          ],
-        }),
-      ],
       connectionManager: {
         autoDial: true,
       },
     }
+
     this.libp2p = await createLibp2p(libp2pOpts)
+
     this._addListeners()
     await this.graphql.start()
     await this.libp2p.start()
     this.running = true
+
+    this.logger.info(`Node started. Peer ID: ${this.libp2p.peerId.toString()}`)
+    this.logger.info(
+      `Advertising the following addresses: ${this.libp2p
+        .getMultiaddrs()
+        .join(', ')}`
+    )
+
+    for (const bootnode of this.opts.bootnodes) {
+      await this.connect(bootnode)
+    }
   }
 
+  /**
+   * Stop the node.
+   */
   public async stop() {
     if (!this.running) return
+    this.logger.info('Node stopping...')
     this._removeListeners()
     await this.libp2p.stop()
     await this.graphql.stop()
     this.running = false
+  }
+
+  /**
+   * Connect to a node via its multiaddr.
+   */
+  public async connect(address: string | Multiaddr) {
+    if (typeof address === 'string') {
+      address = new Multiaddr(address)
+    }
+    this.logger.info(`Pinging remote peer at ${address.toString()}`)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const latency = await this.libp2p.ping(address as any)
+      this.logger.info(`Pinged ${address.toString()} in ${latency}ms`)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      this.logger.error(
+        `Error pinging ${address.toString()}: ${error.message ?? error}`
+      )
+    }
   }
 
   public async getOrders(address: Address, getOpts: GetOrdersOpts = {}) {
@@ -326,70 +458,51 @@ export class SeaportGossipNode {
   }
 
   private _addListeners() {
-    this.libp2p.addEventListener('peer:discovery', this._onPeerDiscovery)
+    this.libp2p.addEventListener(
+      'peer:discovery',
+      this._onPeerDiscovery.bind(this)
+    )
     this.libp2p.connectionManager.addEventListener(
       'peer:connect',
-      this._onPeerConnect
+      this._onPeerConnect.bind(this)
     )
     this.libp2p.connectionManager.addEventListener(
       'peer:disconnect',
-      this._onPeerDisconnect
+      this._onPeerDisconnect.bind(this)
     )
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.libp2p.addEventListener<any>('start', this._onStart)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.libp2p.addEventListener<any>('stop', this._onStop)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.libp2p.addEventListener<any>('error', this._onError)
   }
 
   private _removeListeners() {
-    this.libp2p.removeEventListener('peer:discovery', this._onPeerDiscovery)
+    this.libp2p.removeEventListener(
+      'peer:discovery',
+      this._onPeerDiscovery.bind(this)
+    )
     this.libp2p.connectionManager.removeEventListener(
       'peer:connect',
-      this._onPeerConnect
+      this._onPeerConnect.bind(this)
     )
     this.libp2p.connectionManager.removeEventListener(
       'peer:disconnect',
-      this._onPeerDisconnect
+      this._onPeerDisconnect.bind(this)
     )
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.libp2p.removeEventListener<any>('stop', this._onStop)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.libp2p.removeEventListener<any>('start', this._onStart)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.libp2p.removeEventListener<any>('error', this._onError)
   }
 
   private _onPeerDiscovery(event: Libp2pEvents['peer:discovery']) {
     const peer = event.detail
-    console.log(`Discovered: ${peer.id.toB58String()}`)
+    this.logger.info(`Discovered Peer ID: ${peer.id.toString()}`)
   }
 
   private _onPeerConnect(event: ConnectionManagerEvents['peer:connect']) {
     const connection = event.detail
-    console.log(`Connected: ${connection.remotePeer.toB58String()}`)
+    this.logger.info(
+      `Connected to Peer ID: ${connection.remotePeer.toString()}`
+    )
   }
 
   private _onPeerDisconnect(event: ConnectionManagerEvents['peer:disconnect']) {
     const connection = event.detail
-    console.log(`Disconnected: ${connection.remotePeer.toB58String()}`)
-  }
-
-  private _onStart() {
-    console.log(`Node started. Peer ID: ${this.libp2p.peerId.toString()}`)
-    console.log(
-      `libp2p is advertising the following addresses: ${this.libp2p
-        .getMultiaddrs()
-        .join(', ')}`
+    this.logger.info(
+      `Disconnected from Peer ID: ${connection.remotePeer.toString()}`
     )
-  }
-
-  private _onStop() {
-    console.log('Node stopping...')
-  }
-
-  private _onError(err: Error) {
-    console.error(`An error occurred: ${err?.message ?? err}`)
   }
 }

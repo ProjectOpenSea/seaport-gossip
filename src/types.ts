@@ -61,7 +61,7 @@ export enum OrderFilter {
 
 export enum Side {
   BUY,
-  SELL
+  SELL,
 }
 
 /**

@@ -1,11 +1,6 @@
 import { BigNumber, utils as ethersUtils } from 'ethers'
 
-import {
-  ItemType,
-  OrderFilter,
-  OrderSort,
-  Side
-} from '../types.js'
+import { ItemType, OrderFilter, OrderSort, Side } from '../types.js'
 
 import type {
   Address,
@@ -14,7 +9,8 @@ import type {
   OfferItem,
   OfferItemJSON,
   OrderJSON,
-  OrderWithItems } from '../types.js'
+  OrderWithItems,
+} from '../types.js'
 import type { PrismaClient } from '@prisma/client'
 
 const { keccak256, toUtf8Bytes } = ethersUtils
@@ -69,9 +65,7 @@ const toOfferHash = (offerItem: OfferItemJSON) => {
 /**
  * Calculates the consideration component hash from a consideration item.
  */
-const toConsiderationHash = (
-  considerationItem: ConsiderationItemJSON
-) => {
+const toConsiderationHash = (considerationItem: ConsiderationItemJSON) => {
   const components = [
     typeHashes.considerationItem.slice(2),
     considerationItem.itemType.toString().padStart(64, '0'),
@@ -105,9 +99,7 @@ export const orderHash = (order: OrderJSON) => {
   const offerHash = keccak256(`0x${offerComponents}`)
 
   const considerationComponents = order.consideration
-    .map((considerationItem) =>
-      toConsiderationHash(considerationItem).slice(2)
-    )
+    .map((considerationItem) => toConsiderationHash(considerationItem).slice(2))
     .join('')
   const considerationHash = keccak256(`0x${considerationComponents}`)
 
@@ -144,19 +136,21 @@ export const offerItemToJSON = (item: OfferItem): OfferItemJSON => ({
 /**
  * Formats a Prisma OfferItem to JSON equivalent.
  */
-export const considerationItemToJSON = (item: ConsiderationItem): ConsiderationItemJSON => ({
+export const considerationItemToJSON = (
+  item: ConsiderationItem
+): ConsiderationItemJSON => ({
   itemType: item.itemType,
   token: item.token,
   identifierOrCriteria: item.identifierOrCriteria,
   startAmount: item.startAmount.toString(),
   endAmount: item.endAmount.toString(),
-  recipient: item.recipient
+  recipient: item.recipient,
 })
 
 /**
  * Formats a OfferItemJSON to Prisma equivalent.
  */
-export const offerItemJSONToPrisma = (item: OfferItemJSON)  => ({
+export const offerItemJSONToPrisma = (item: OfferItemJSON) => ({
   itemType: item.itemType,
   token: item.token,
   identifierOrCriteria: item.identifierOrCriteria,
@@ -167,13 +161,13 @@ export const offerItemJSONToPrisma = (item: OfferItemJSON)  => ({
 /**
  * Formats a ConsiderationItemJSON to Prisma equivalent.
  */
-export const considerationItemJSONToPrisma = (item: ConsiderationItemJSON)  => ({
+export const considerationItemJSONToPrisma = (item: ConsiderationItemJSON) => ({
   itemType: item.itemType,
   token: item.token,
   identifierOrCriteria: item.identifierOrCriteria,
   startAmount: item.startAmount,
   endAmount: item.endAmount,
-  recipient: item.recipient
+  recipient: item.recipient,
 })
 
 /**
@@ -181,10 +175,13 @@ export const considerationItemJSONToPrisma = (item: ConsiderationItemJSON)  => (
  */
 export const orderToJSON = (order: OrderWithItems): OrderJSON => {
   const formattedOfferItems = order.offer.map((o) => offerItemToJSON(o))
-  const formattedConsiderationItems = order.consideration.map((o) => considerationItemToJSON(o))
+  const formattedConsiderationItems = order.consideration.map((o) =>
+    considerationItemToJSON(o)
+  )
 
   const additionalRecipients =
-    order.additionalRecipients !== undefined && order.additionalRecipients !== null 
+    order.additionalRecipients !== undefined &&
+    order.additionalRecipients !== null
       ? order.additionalRecipients.split(',')
       : undefined
 
@@ -194,7 +191,7 @@ export const orderToJSON = (order: OrderWithItems): OrderJSON => {
     consideration: formattedConsiderationItems,
     additionalRecipients,
     numerator: order.numerator?.toString(),
-    denominator: order.denominator?.toString()
+    denominator: order.denominator?.toString(),
   }
 }
 
@@ -203,15 +200,17 @@ export const orderToJSON = (order: OrderWithItems): OrderJSON => {
  */
 export const orderJSONToPrisma = (order: OrderJSON, hash: string) => {
   const additionalRecipients =
-  order.additionalRecipients !== undefined
-    ? order.additionalRecipients.join(',')
-    : undefined
+    order.additionalRecipients !== undefined
+      ? order.additionalRecipients.join(',')
+      : undefined
 
   return {
     ...order,
     hash,
     offer: { create: order.offer.map((o) => offerItemJSONToPrisma(o)) },
-    consideration: { create: order.consideration.map((c) => considerationItemJSONToPrisma(c)) },
+    consideration: {
+      create: order.consideration.map((c) => considerationItemJSONToPrisma(c)),
+    },
     additionalRecipients,
     numerator: order.numerator,
     denominator: order.denominator,
@@ -243,7 +242,9 @@ export const isOrderJSON = (order: OrderJSON): order is OrderJSON => {
 /**
  * Validates if an order is an instance of {@link OrderWithItems}
  */
-export const isOrderWithItems = (order: OrderJSON | OrderWithItems): order is OrderWithItems => {
+export const isOrderWithItems = (
+  order: OrderJSON | OrderWithItems
+): order is OrderWithItems => {
   const keys = Object.keys(order)
 
   // Order must have 13 (basic) or 15 (advanced) properties
@@ -253,8 +254,14 @@ export const isOrderWithItems = (order: OrderJSON | OrderWithItems): order is Or
   if (keys.some((field) => !(field in order))) return false
 
   // Offer and consideration items should have id field if from DB
-  if (!order.offer.some((item) => (item as OfferItem).id === undefined)) return false
-  if (!order.consideration.some((item) => (item as ConsiderationItem).id === undefined)) return false
+  if (!order.offer.some((item) => (item as OfferItem).id === undefined))
+    return false
+  if (
+    !order.consideration.some(
+      (item) => (item as ConsiderationItem).id === undefined
+    )
+  )
+    return false
 
   return true
 }
@@ -286,9 +293,14 @@ export const pricePerToken = (asset: ItemType.NATIVE | Address) => {
 /**
  * Returns an item's current price
  */
-export const currentPrice = (item: OfferItem | ConsiderationItem, startTime: number, endTime: number) => {
+export const currentPrice = (
+  item: OfferItem | ConsiderationItem,
+  startTime: number,
+  endTime: number
+) => {
   const { startAmount, endAmount, itemType, token } = item
-  const currentAmount = (BigInt(endAmount) - BigInt(startAmount)) / BigInt(endTime - startTime)
+  const currentAmount =
+    (BigInt(endAmount) - BigInt(startAmount)) / BigInt(endTime - startTime)
   if (itemType === ItemType.NATIVE) {
     return currentAmount * pricePerToken(itemType)
   } else if (itemType === ItemType.ERC20) {
@@ -300,23 +312,32 @@ export const currentPrice = (item: OfferItem | ConsiderationItem, startTime: num
 /**
  * Returns the max from a list of bigints
  */
-export const bigIntMax = (...args: bigint[]) => args.reduce((m, e) => e > m ? e : m)
+export const bigIntMax = (...args: bigint[]) =>
+  args.reduce((m, e) => (e > m ? e : m))
 
 /**
  * Returns the min from a list of bigints
  */
-export const bigIntMin = (...args: bigint[]) => args.reduce((m, e) => e < m ? e : m)
+export const bigIntMin = (...args: bigint[]) =>
+  args.reduce((m, e) => (e < m ? e : m))
 
 /**
  * Returns a set of orders ordered by current price
  */
-export const compareOrdersByCurrentPrice = (side: Side, sort: OrderSort.PRICE_ASC | OrderSort.PRICE_DESC) => {
+export const compareOrdersByCurrentPrice = (
+  side: Side,
+  sort: OrderSort.PRICE_ASC | OrderSort.PRICE_DESC
+) => {
   return (a: OrderWithItems, b: OrderWithItems) => {
     let itemA
     let itemB
     if (side === Side.BUY) {
-      itemA = a.offer.find((o) => o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20)
-      itemB = b.offer.find((o) => o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20)
+      itemA = a.offer.find(
+        (o) => o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20
+      )
+      itemB = b.offer.find(
+        (o) => o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20
+      )
     } else if (side === Side.SELL) {
       itemA = a.consideration.find((c) => c.recipient === a.offerer)
       itemB = b.consideration.find((c) => c.recipient === b.offerer)
@@ -336,9 +357,18 @@ export const compareOrdersByCurrentPrice = (side: Side, sort: OrderSort.PRICE_AS
 /**
  * Returns order hashes for single or bundle items.
  */
-export const orderHashesFor = async (prisma: PrismaClient, token: Address, side: Side, filter: OrderFilter.SINGLE_ITEM | OrderFilter.BUNDLES) => {
-  const itemType = filter === OrderFilter.SINGLE_ITEM ? { equals: 1 } : { gt: 1 }
-  const ordHash = filter === OrderFilter.SINGLE_ITEM ? { _count: { equals: 1 } } : { _count: { gt: 1 } }
+export const orderHashesFor = async (
+  prisma: PrismaClient,
+  token: Address,
+  side: Side,
+  filter: OrderFilter.SINGLE_ITEM | OrderFilter.BUNDLES
+) => {
+  const itemType =
+    filter === OrderFilter.SINGLE_ITEM ? { equals: 1 } : { gt: 1 }
+  const ordHash =
+    filter === OrderFilter.SINGLE_ITEM
+      ? { _count: { equals: 1 } }
+      : { _count: { gt: 1 } }
   let items
   if (side === Side.BUY) {
     items = await prisma.offerItem.groupBy({
@@ -346,7 +376,7 @@ export const orderHashesFor = async (prisma: PrismaClient, token: Address, side:
       where: { token },
       having: {
         itemType,
-        orderHash: ordHash
+        orderHash: ordHash,
       },
     })
   } else {
@@ -355,8 +385,8 @@ export const orderHashesFor = async (prisma: PrismaClient, token: Address, side:
       where: { token },
       having: {
         itemType,
-        orderHash: ordHash
-      }
+        orderHash: ordHash,
+      },
     })
   }
   return items.map((i) => i.orderHash)

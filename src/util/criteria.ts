@@ -3,7 +3,9 @@ import { toBufferBE } from 'bigint-buffer'
 
 import type { Proof } from '@ethereumjs/trie'
 
-export const ErrorCriteriaNotInit = new Error('trie uninitialized, please await create')
+export const ErrorCriteriaNotInit = new Error(
+  'trie uninitialized, please await create'
+)
 export class Criteria {
   public initialized = false
   public tokenIds: bigint[]
@@ -44,7 +46,7 @@ export class Criteria {
 
   public async verifyProof(tokenId: bigint, proof: Proof) {
     if (!this.initialized) throw ErrorCriteriaNotInit
-    
+
     try {
       await Trie.verifyProof(this.trie.root, this._key(tokenId), proof)
       return true

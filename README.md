@@ -108,9 +108,17 @@ Return stats for your node:
 
 ## API
 
+### Node
+
+#### `node.start()`
+
+#### `node.stop()`
+
+#### `node.connect(address: string | Multiaddr)`
+
 ### Orders
 
-#### `node.getOrders(address: string, { sort, filter, offset }): Promise<Order[]>`
+#### `node.getOrders(address: string, { sort, filter, offset, limit }): Promise<Order[]>`
 
 #### `node.getOrderByHash(hash: string): Promise<Order | null>`
 

@@ -7,7 +7,13 @@ import ISeaport from '../contract-interfaces/Seaport.json' assert { type: 'json'
 import { ItemType } from '../types.js'
 import { isOrderWithItems, orderHash, orderToJSON } from '../util/index.js'
 
-import type { Address, ItemJSON, OrderJSON , OrderStatus , OrderWithItems } from '../types.js'
+import type {
+  Address,
+  ItemJSON,
+  OrderJSON,
+  OrderStatus,
+  OrderWithItems,
+} from '../types.js'
 import type { PrismaClient } from '@prisma/client'
 import type { BigNumber } from 'ethers'
 
@@ -28,10 +34,17 @@ export class OrderValidator {
 
     this.prisma = opts.prisma
     this.seaport = new ethers.Contract(opts.seaportAddress, ISeaport)
-    this.provider = typeof opts.web3Provider === 'string' ? new ethers.providers.JsonRpcProvider(opts.web3Provider) : opts.web3Provider
+    this.provider =
+      typeof opts.web3Provider === 'string'
+        ? new ethers.providers.JsonRpcProvider(opts.web3Provider)
+        : opts.web3Provider
   }
 
-  public async validate(order: OrderJSON | OrderWithItems, fulfiller?: Address, updateRecordInDB = false) {
+  public async validate(
+    order: OrderJSON | OrderWithItems,
+    fulfiller?: Address,
+    updateRecordInDB = false
+  ) {
     if (isOrderWithItems(order)) order = orderToJSON(order)
 
     const hash = orderHash(order)
@@ -75,7 +88,11 @@ export class OrderValidator {
     if (!isFillable || fulfiller === undefined) return isFillable
 
     for (const consideration of order.consideration) {
-      isFillable = await this._hasSufficientAmount(fulfiller, consideration, order)
+      isFillable = await this._hasSufficientAmount(
+        fulfiller,
+        consideration,
+        order
+      )
       if (!isFillable) break
     }
 
@@ -134,8 +151,7 @@ export class OrderValidator {
   ) {
     if (startAmount === endAmount) return ethers.BigNumber.from(startAmount)
     const duration = endTime - startTime
-    const elapsed =
-      Math.floor(new Date().getTime() / 1000) - startTime
+    const elapsed = Math.floor(new Date().getTime() / 1000) - startTime
     const remaining = duration - elapsed
     return ethers.BigNumber.from(startAmount)
       .mul(remaining)
@@ -148,76 +164,86 @@ export class OrderValidator {
     item: ItemJSON,
     order: OrderJSON
   ) {
-    const { itemType, token, startAmount, endAmount, identifierOrCriteria } = item
+    const { itemType, token, startAmount, endAmount, identifierOrCriteria } =
+      item
     const { startTime, endTime } = order
     switch (itemType) {
-    case ItemType.NATIVE: {
-      const amount = this._currentAmount(
-        startAmount,
-        endAmount,
-        startTime,
-        endTime
-      )
-      const balance = await this.provider.getBalance(address)
-      return balance.gte(amount)
-    }
-    case ItemType.ERC20: {
-      const amount = this._currentAmount(
-        startAmount,
-        endAmount,
-        startTime,
-        endTime
-      )
-      const contract = this._getContract(token, ItemType.ERC20)
-      const balance = await contract.balanceOf(address)
-      return balance.gte(amount)
-    }
-    case ItemType.ERC721: {
-      const contract = this._getContract(token, ItemType.ERC721)
-      const owner = await contract.ownerOf(identifierOrCriteria)
-      return owner === address
-    }
-    case ItemType.ERC1155: {
-      const amount = this._currentAmount(
-        startAmount,
-        endAmount,
-        startTime,
-        endTime
-      )
-      const contract = this._getContract(token, ItemType.ERC1155)
-      const balance = await contract.balanceOf(address, identifierOrCriteria)
-      return ethers.BigNumber.from(balance).gte(amount)
-    }
-    case ItemType.ERC721_WITH_CRITERIA: {
-      const contract = this._getContract(token, ItemType.ERC721)
-      const items = await this._itemsFromCriteria(contract, identifierOrCriteria)
-      for (const _item of items) {
-        const owner = await contract.ownerOf(_item)
-        if (owner === address) return true
+      case ItemType.NATIVE: {
+        const amount = this._currentAmount(
+          startAmount,
+          endAmount,
+          startTime,
+          endTime
+        )
+        const balance = await this.provider.getBalance(address)
+        return balance.gte(amount)
       }
-      return false
-    }
-    case ItemType.ERC1155_WITH_CRITERIA: {
-      const amount = this._currentAmount(
-        startAmount,
-        endAmount,
-        startTime,
-        endTime
-      )
-      const contract = this._getContract(token, ItemType.ERC1155)
-      const items = await this._itemsFromCriteria(contract, identifierOrCriteria)
-      for (const _item of items) {
-        const balance = await contract.balanceOf(address, _item)
-        if (ethers.BigNumber.from(balance).gte(amount)) return true
+      case ItemType.ERC20: {
+        const amount = this._currentAmount(
+          startAmount,
+          endAmount,
+          startTime,
+          endTime
+        )
+        const contract = this._getContract(token, ItemType.ERC20)
+        const balance = await contract.balanceOf(address)
+        return balance.gte(amount)
       }
-      return false
-    }
-    default:
-      throw new Error('unknown itemType')
+      case ItemType.ERC721: {
+        const contract = this._getContract(token, ItemType.ERC721)
+        const owner = await contract.ownerOf(identifierOrCriteria)
+        return owner === address
+      }
+      case ItemType.ERC1155: {
+        const amount = this._currentAmount(
+          startAmount,
+          endAmount,
+          startTime,
+          endTime
+        )
+        const contract = this._getContract(token, ItemType.ERC1155)
+        const balance = await contract.balanceOf(address, identifierOrCriteria)
+        return ethers.BigNumber.from(balance).gte(amount)
+      }
+      case ItemType.ERC721_WITH_CRITERIA: {
+        const contract = this._getContract(token, ItemType.ERC721)
+        const items = await this._itemsFromCriteria(
+          contract,
+          identifierOrCriteria
+        )
+        for (const _item of items) {
+          const owner = await contract.ownerOf(_item)
+          if (owner === address) return true
+        }
+        return false
+      }
+      case ItemType.ERC1155_WITH_CRITERIA: {
+        const amount = this._currentAmount(
+          startAmount,
+          endAmount,
+          startTime,
+          endTime
+        )
+        const contract = this._getContract(token, ItemType.ERC1155)
+        const items = await this._itemsFromCriteria(
+          contract,
+          identifierOrCriteria
+        )
+        for (const _item of items) {
+          const balance = await contract.balanceOf(address, _item)
+          if (ethers.BigNumber.from(balance).gte(amount)) return true
+        }
+        return false
+      }
+      default:
+        throw new Error('unknown itemType')
     }
   }
 
-  private async _itemsFromCriteria(_contract: ethers.Contract, _criteria: string) {
+  private async _itemsFromCriteria(
+    _contract: ethers.Contract,
+    _criteria: string
+  ) {
     // TODO implement
     return []
   }
@@ -225,17 +251,17 @@ export class OrderValidator {
   private _getContract(address: Address, itemType: ItemType) {
     let abi
     switch (itemType) {
-    case ItemType.ERC20:
-      abi = IERC20
-      break
-    case ItemType.ERC721:
-      abi = IERC721
-      break
-    case ItemType.ERC1155:
-      abi = IERC1155
-      break
-    default:
-      throw new Error('unknown itemType')
+      case ItemType.ERC20:
+        abi = IERC20
+        break
+      case ItemType.ERC721:
+        abi = IERC721
+        break
+      case ItemType.ERC1155:
+        abi = IERC1155
+        break
+      default:
+        throw new Error('unknown itemType')
     }
     return new ethers.Contract(address, abi, this.provider)
   }

@@ -26,13 +26,13 @@
     "lint:fix": "eslint src test prisma --fix",
     "prisma:generate": "SKIP_PRISMA_VERSION_CHECK=true prisma generate",
     "prisma:migrate": "prisma migrate",
-    "start:cli": "ts-node src/bin/cli.ts",
-    "start:dev": "ts-node src/bin/start.ts",
-    "start:devnet": "ts-node scripts/simulate/run-local-net.ts",
-    "test": "NODE_ENV='development' NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 mocha test/**/*.spec.ts"
+    "start:cli": "ts-node-esm src/bin/cli.ts",
+    "start:dev": "ts-node-esm src/bin/start.ts",
+    "start:devnet": "NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 ts-node-esm scripts/simulate/run-local-net.ts",
+    "test": "NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 mocha test/**/*.spec.ts"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node-esm prisma/seed.ts"
   },
   "dependencies": {
     "@chainsafe/libp2p-gossipsub": "^1.1.2",
@@ -44,6 +44,7 @@
     "@libp2p/kad-dht": "^1.0.16",
     "@libp2p/mplex": "^1.2.1",
     "@libp2p/websockets": "^1.0.9",
+    "@multiformats/multiaddr": "^10.3.3",
     "@prisma/client": "^4.1.0",
     "bigint-buffer": "^1.1.5",
     "class-validator": "^0.13.2",
@@ -55,10 +56,13 @@
     "prom-client": "^14.0.1",
     "reflect-metadata": "^0.1.13",
     "type-graphql": "^1.1.1",
-    "typegraphql-prisma": "^0.21.0"
+    "typegraphql-prisma": "^0.21.0",
+    "winston": "^3.8.1",
+    "winston-daily-rotate-file": "^4.7.1"
   },
   "devDependencies": {
     "@chainsafe/eslint-plugin-node": "^11.2.3",
+    "@libp2p/peer-id-factory": "^1.0.16",
     "@types/chai": "^4.3.1",
     "@types/chai-as-promised": "^7.1.5",
     "@types/graphql-fields": "^1.3.4",
@@ -71,7 +75,9 @@
     "eslint": "^8.17.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-import": "^2.26.0",
+    "eslint-plugin-prettier": "^4.2.1",
     "mocha": "^10.0.0",
+    "prettier": "^2.7.1",
     "prisma": "^4.1.0",
     "ts-node": "^10.8.1",
     "typescript": "^4.7.3"

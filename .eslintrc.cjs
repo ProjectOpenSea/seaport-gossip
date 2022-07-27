@@ -7,7 +7,7 @@ module.exports = {
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
-    'prettier',
+    'plugin:prettier/recommended',
   ],
   parser: '@typescript-eslint/parser',
   parserOptions: {
@@ -21,9 +21,6 @@ module.exports = {
     '@chainsafe/eslint-plugin-node',
   ],
   rules: {
-    indent: ['error', 2],
-    quotes: ['error', 'single'],
-    semi: ['error', 'never'],
     '@chainsafe/node/no-deprecated-api': 'error',
     '@chainsafe/node/file-extension-in-import': [
       'error',

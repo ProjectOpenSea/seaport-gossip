@@ -379,12 +379,16 @@ describe('SeaportGossipNode', () => {
         allOrders.every(
           async (o) =>
             o.startTime >= timestampNow() &&
-          !(await orderIsAuction(prisma, o.hash)) &&
-          o.offerer === order.offerer
+            !(await orderIsAuction(prisma, o.hash)) &&
+            o.offerer === order.offerer
         )
       )
 
-      getOpts = { side, sort: OrderSort.PRICE_DESC, filter: { [OrderFilter.CURRENCY]: wethAddress } }
+      getOpts = {
+        side,
+        sort: OrderSort.PRICE_DESC,
+        filter: { [OrderFilter.CURRENCY]: wethAddress },
+      }
       orders = await node.getOrders(contractAddr, getOpts)
       expect(orders).to.deep.eq(
         orders.sort(compareOrdersByCurrentPrice(side, OrderSort.PRICE_DESC))
@@ -395,7 +399,7 @@ describe('SeaportGossipNode', () => {
         )
       )
     }
-    
+
     await node.stop()
   })
 })
