@@ -1,10 +1,10 @@
 /**
  * This script does the following:
  * 1. Starts 3 nodes, connected A -> B -> C
- * 2. Adds orders to node A
- * 3. Watch nodes B and C receive, validate, and re-gossip
+ * 2. Adds valid orders to node A
+ * 3. Watch nodes B receive, validate, and re-gossip to node C
  * 4. Adds invalid order to node C
- * 5. Watch Node B validate and discard, not gossiping to Node A and decreasing peer score for node C
+ * 5. Watch node B validate and discard, not gossiping to Node A and decreasing peer score for node C
  */
 
 import { createEd25519PeerId } from '@libp2p/peer-id-factory'
@@ -23,8 +23,6 @@ const opts: SeaportGossipNodeOpts = {
   web3Provider: new MockProvider('mainnet'),
   minPeers: 1,
   maxPeers: 1,
-  logLevel: 'info',
-  logColor: Color.FG_YELLOW,
 }
 
 const node1PeerId = await createEd25519PeerId()
@@ -36,6 +34,7 @@ const node1 = new SeaportGossipNode({
   peerId: node1PeerId,
   port: 8998,
   graphqlPort: 4000,
+  logColor: Color.FG_YELLOW,
 })
 const node2 = new SeaportGossipNode({
   ...opts,
@@ -54,19 +53,24 @@ const node3 = new SeaportGossipNode({
   logColor: Color.FG_MAGENTA,
 })
 
+const nodes = [node1, node2, node3]
+
+for (const node of nodes) {
+  await node.start()
+}
+
+let stopping = false
 const stop = async () => {
-  for (const node of [node1, node2, node3]) {
-    void node.stop()
-  }
+  if (stopping) return
+  stopping = true
+  await Promise.all(nodes.map((node) => node.stop()))
   process.exit(0)
 }
 
-process.on('SIGTERM', stop)
 process.on('SIGINT', stop)
+process.on('SIGTERM', stop)
 
-for (const node of [node1, node2, node3]) {
-  await node.start()
-}
+await setTimeout(1000)
 
 await node1.addOrders(validBasicOrders)
 

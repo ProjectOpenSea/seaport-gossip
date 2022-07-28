@@ -161,7 +161,7 @@ export interface SeaportGossipNodeOpts {
 
   /**
    * Minimum log level to output
-   * Default: warn
+   * Default: info
    */
   logLevel?: string
 
@@ -195,7 +195,7 @@ const defaultOpts = {
   seaportAddress: process.env.SEAPORT_ADDRESS ?? DEFAULT_SEAPORT_ADDRESS,
   metricsAddress: null,
   logger: null,
-  logLevel: 'warn',
+  logLevel: 'info',
   logColor: Color.FG_WHITE,
 }
 
@@ -359,6 +359,7 @@ export class SeaportGossipNode {
       const isValid = await this._addOrder(order)
       if (isValid) numValid++
     }
+    this.logger.info(`Added ${numValid} valid new orders.`)
     return numValid
   }
 

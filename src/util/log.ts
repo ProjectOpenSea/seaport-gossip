@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-shadow */
 import { createLogger, format, transports } from 'winston'
 import DailyRotateFile from 'winston-daily-rotate-file'
 
@@ -34,36 +33,49 @@ export enum Color {
   BG_WHITE = '\x1b[47m',
 }
 
-export const colorString = (color: Color, string: string) => {
+export const colorString = (string: string, color?: Color) => {
+  if (color === undefined) return string
   return `${color}${string}${Color.RESET}`
 }
 
-const myFormat = (color?: Color) =>
-  printf(
-    ({ level, message, label, timestamp }) =>
-      `${timestamp} ${
-        label !== undefined
-          ? `[${color !== undefined ? colorString(color, label) : label}]`
-          : ''
-      } ${level}: ${
-        color !== undefined ? colorString(color, message) : message
-      }`
-  )
+const logFormat = (color?: Color) =>
+  /* eslint-disable @typescript-eslint/no-shadow */
+  printf(({ level, message, label, timestamp }) => {
+    label = label !== undefined ? ` ${colorString(label, color)}` : ''
+    message = colorString(message, color)
+    return `${timestamp}${label} ${level} ${message}`
+  })
+
+const timestampFormat = { format: 'YYYY-MM-DD HH:mm:ss' }
+
+const shortPeerId = (peerId?: string) => {
+  if (peerId === undefined) return
+  return `${peerId.slice(0, 6)}…${peerId.slice(46, 52)}`
+}
 
 export const createWinstonLogger = (
   options: LoggerOptions = { level: 'warn' },
   peerId?: string,
   logColor = Color.FG_YELLOW
 ) => {
-  const peerIdLabel =
-    peerId !== undefined
-      ? `${peerId.toString().slice(0, 6)}…${peerId.toString().slice(46, 52)}`
-      : undefined
+  peerId = shortPeerId(peerId)
 
   const winstonTransports = []
+  // Log to the console (with colors enabled)
+  winstonTransports.push(
+    new transports.Console({
+      format: combine(
+        label({ label: peerId }),
+        timestamp(timestampFormat),
+        colorize(),
+        logFormat(logColor)
+      ),
+    })
+  )
 
+  // If we're in production additionally log
+  // to a rotating file (without colors)
   if (process.env.NODE_ENV === 'production') {
-    // If we're in production log to a rotating file (without colors)
     winstonTransports.push(
       new DailyRotateFile({
         filename: 'node-%DATE%.log',
@@ -72,21 +84,9 @@ export const createWinstonLogger = (
         maxSize: '20m',
         maxFiles: '14d',
         format: combine(
-          label({ label: peerIdLabel }),
-          timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-          myFormat()
-        ),
-      })
-    )
-  } else {
-    // Otherwise log to the `console` (with colors enabled)
-    winstonTransports.push(
-      new transports.Console({
-        format: combine(
-          label({ label: peerIdLabel }),
-          timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-          colorize(),
-          myFormat(logColor)
+          label({ label: peerId }),
+          timestamp(timestampFormat),
+          logFormat()
         ),
       })
     )

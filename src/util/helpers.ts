@@ -306,7 +306,7 @@ export const currentPrice = (
   } else if (itemType === ItemType.ERC20) {
     return currentAmount * pricePerERC20Token(token)
   }
-  return BigInt(0)
+  return 0n
 }
 
 /**

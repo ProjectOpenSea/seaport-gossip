@@ -29,10 +29,14 @@ import type { PrismaClient } from '@prisma/client'
 chai.use(chaiAsPromised)
 
 describe('SeaportGossipNode', () => {
-  const opts = { web3Provider: new MockProvider('mainnet') }
+  const opts = { web3Provider: new MockProvider('mainnet'), logLevel: 'warn' }
   const node = new SeaportGossipNode(opts)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const prisma: PrismaClient = (node as any).prisma
+
+  before(async () => {
+    await truncateTables(node)
+  })
 
   afterEach(async () => {
     await truncateTables(node)
