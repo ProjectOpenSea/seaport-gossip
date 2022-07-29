@@ -1,5 +1,6 @@
 import { BigNumber, utils as ethersUtils } from 'ethers'
 
+import { ErrorInvalidOrderData } from '../errors.js'
 import { ItemType, OrderFilter, OrderSort, Side } from '../types.js'
 
 import type {
@@ -17,6 +18,14 @@ const { keccak256, toUtf8Bytes } = ethersUtils
 
 /** The zero address */
 export const zeroAddress = `0x${'0'.repeat(40)}`
+
+/**
+ * Truncate a string to 6 characters on each side.
+ */
+export const short = <T extends string | null | undefined>(str: T): T => {
+  if (str === undefined || str === null || str.length < 12) return str
+  return `${str.slice(0, 6)}…${str.slice(str.length - 6, str.length)}` as T
+}
 
 /** Seaport contract - Type strings */
 const typeStrings = {
@@ -193,6 +202,22 @@ export const orderToJSON = (order: OrderWithItems): OrderJSON => {
     numerator: order.numerator?.toString(),
     denominator: order.denominator?.toString(),
   }
+}
+
+/**
+ * {@link OrderJSON} to {@link Uint8Array}
+ */
+export const orderJSONToUint8Array = (order: OrderJSON) => {
+  return Uint8Array.from(Buffer.from(JSON.stringify(order)))
+}
+
+/**
+ * {@link Uint8Array} to {@link OrderJSON}
+ */
+export const uint8ArrayToOrderJSON = (data: Uint8Array) => {
+  const order = JSON.parse(Buffer.from(data).toString())
+  if (!isOrderJSON(order)) throw ErrorInvalidOrderData
+  return order
 }
 
 /**

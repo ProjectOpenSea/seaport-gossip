@@ -56,7 +56,6 @@ async function main() {
       metadata: {
         create: {
           isValid: true,
-          isExpired: false,
           isCancelled: false,
           isPinned: false,
           isRemoved: false,
@@ -123,7 +122,6 @@ async function main() {
       metadata: {
         create: {
           isValid: false,
-          isExpired: true,
           isCancelled: false,
           isPinned: true,
           isRemoved: false,

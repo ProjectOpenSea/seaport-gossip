@@ -18,7 +18,7 @@ model OfferItem {
   itemType             Int
   token                String
   identifierOrCriteria String
-  startAmount          String 
+  startAmount          String
   endAmount            String
 
   order     Order  @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
@@ -68,7 +68,6 @@ model Order {
   // Metadata
   chainId  String /// string decimal
   metadata OrderMetadata?
-
 }
 
 model OrderMetadata {
@@ -76,7 +75,6 @@ model OrderMetadata {
   createdAt DateTime @default(now())
 
   isValid     Boolean
-  isExpired   Boolean
   isCancelled Boolean
 
   isAuction Boolean /// when order is restricted and zone is an EOA. in the future may have whitelisted "auction" zones
@@ -92,7 +90,6 @@ model OrderMetadata {
   lastValidatedBlockHash   String?
 
   order Order @relation(fields: [orderHash], references: [hash], onDelete: Cascade)
-
 }
 
 model NodeStatus {
@@ -126,8 +123,8 @@ model EthHeaders {
 }
 
 model ERC20TokenPrices {
-  token String @id /// address, or 'NATIVE'
+  token            String   @id /// address, or 'NATIVE'
   usdPricePerToken String
-  chainId String /// decimal string
-  updatedAt DateTime @updatedAt
+  chainId          String /// decimal string
+  updatedAt        DateTime @updatedAt
 }

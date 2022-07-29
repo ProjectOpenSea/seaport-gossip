@@ -8,7 +8,7 @@ import {
   timestampNow,
   zeroAddress,
 } from '../dist/index.js'
-import { OrderEvent, OrderFilter, OrderSort, Side } from '../dist/types.js'
+import { OrderFilter, OrderSort, Side } from '../dist/types.js'
 
 import invalidBasicOrders from './testdata/orders/basic-invalid.json' assert { type: 'json' }
 import validBasicOrders from './testdata/orders/basic-valid.json' assert { type: 'json' }
@@ -108,6 +108,7 @@ describe('SeaportGossipNode', () => {
     await node.stop()
   })
 
+  /*
   it('should subscribe to events', async () => {
     expect(Object.keys(node.subscriptions).length).to.eq(0)
 
@@ -145,6 +146,7 @@ describe('SeaportGossipNode', () => {
     expect(Object.keys(node.subscriptions).length).to.eq(0)
     await node.stop()
   })
+  */
 
   it('should return node stats', async () => {
     const stats = await node.stats()

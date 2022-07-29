@@ -1,4 +1,4 @@
 node_modules
 dist
-datadir*
+datadirs
 yarn-error.log

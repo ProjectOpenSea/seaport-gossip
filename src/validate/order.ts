@@ -116,6 +116,10 @@ export class OrderValidator {
     return totalFilled.eq(totalSize)
   }
 
+  public async isValidSignature(_hash: string) {
+    return true
+  }
+
   /**
    * Checks if order is restricted and zone is EOA, then the order is likely an auction.
    * In the future we can have a whitelist of "auction zones" as they are created.

@@ -1,32 +1,39 @@
-// import { GossipSub } from '@chainsafe/libp2p-gossipsub'
+import { GossipSub } from '@chainsafe/libp2p-gossipsub'
+import { MessageAcceptance } from '@chainsafe/libp2p-gossipsub/types'
 import { Noise } from '@chainsafe/libp2p-noise'
-// import { Bootstrap } from '@libp2p/bootstrap'
-// import { KadDHT } from '@libp2p/kad-dht'
+import { KadDHT } from '@libp2p/kad-dht'
 import { Mplex } from '@libp2p/mplex'
 import { WebSockets } from '@libp2p/websockets'
-import { Multiaddr } from '@multiformats/multiaddr'
 import { PrismaClient } from '@prisma/client'
 import { createLibp2p } from 'libp2p'
 
 import { DEFAULT_SEAPORT_ADDRESS } from './constants.js'
 import { startGraphqlServer } from './db/index.js'
-import { ErrorInvalidAddress, ErrorOrderNotFound } from './errors.js'
-import { formatGetOrdersOpts, queryOrders } from './query/order.js'
-import { OrderEvent } from './types.js'
 import {
-  isOrderJSON,
+  ErrorInvalidAddress,
+  ErrorNodeNotRunning,
+  ErrorOrderNotFound,
+} from './errors.js'
+import { addOrder, formatGetOrdersOpts, queryOrders } from './query/order.js'
+import {
   isValidAddress,
   orderHash,
-  orderJSONToPrisma,
+  orderJSONToUint8Array,
   orderToJSON,
+  short,
+  uint8ArrayToOrderJSON,
+  zeroAddress,
 } from './util/index.js'
 import { Color, createWinstonLogger } from './util/log.js'
 import { OrderValidator } from './validate/index.js'
 
 import type { GetOrdersOpts } from './query/order.js'
 import type { Address, OrderJSON } from './types.js'
+import type { GossipsubMessage } from '@chainsafe/libp2p-gossipsub'
 import type { ConnectionManagerEvents } from '@libp2p/interfaces/connection-manager'
 import type { PeerId } from '@libp2p/interfaces/peer-id'
+import type { PeerInfo } from '@libp2p/interfaces/peer-info'
+import type { Multiaddr } from '@multiformats/multiaddr'
 import type { ethers } from 'ethers'
 import type { Libp2p, Libp2pEvents } from 'libp2p'
 import type winston from 'winston'
@@ -41,6 +48,13 @@ export interface SeaportGossipNodeOpts {
    * The ethereum chain ID this node will use will be requested from this provider via `eth_chainId`.
    */
   web3Provider?: string | ethers.providers.Provider
+
+  /**
+   * Path to the datadir to use (dev.db must be located inside)
+   * Default in dev: ./datadirs/datadir
+   * Default in prod: TBD, probably datadir within OS-specific app config folder
+   */
+  datadir?: string
 
   /**
    * The peer ID to use for this node.
@@ -69,35 +83,30 @@ export interface SeaportGossipNodeOpts {
   /**
    * Bootnodes to connect to on start.
    * Format: /ip4/hostname/tcp/port/ws
-   * Default: OpenSea signaling server
+   * Default: OpenSea rendezvous server
    */
-  bootnodes?: string[] | Multiaddr[]
+  bootnodes?: Array<[PeerId, Multiaddr[]]>
 
   /**
-   * Minimum peers to be connected to.
-   * If peers fall below this number, will ask connected peers for more connections.
-   * Default: 3
+   * Minimum p2p connections.
+   * Will dial for more peers if connections falls below this number.
+   * Default: 5
    */
-  minPeers?: number
+  minConnections?: number
 
   /**
-   * Maximum peers to be connected to.
-   * If peers exceed this number, will drop oldest peers.
-   * Default: 7
+   * Maximum p2p connections.
+   * Will prune connections if exceeds this number.
+   * Default: 15
    */
-  maxPeers?: number
+  maxConnections?: number
 
   /**
-   * Collections to start watching on start.
+   * Collections to watch on start.
+   * Use 'all' to subscribe to all topics.
    * Default: none
    */
   collectionAddresses?: Address[]
-
-  /**
-   * Default set of events to subscribe per collection.
-   * Default: all events
-   */
-  collectionEvents?: OrderEvent[]
 
   /**
    * Maximum number of orders to keep in the database. Approx 1KB per order.
@@ -170,6 +179,19 @@ export interface SeaportGossipNodeOpts {
    * Default: Color.FG_WHITE
    */
   logColor?: Color
+
+  /**
+   * If the node should start in client or server mode
+   * Default: true
+   */
+  clientMode?: boolean
+
+  /**
+   * For custom libp2p behavior, this object is passed
+   * to the libp2p create options.
+   * Default: none
+   */
+  customLibp2pConfig?: object
 }
 
 /**
@@ -177,15 +199,15 @@ export interface SeaportGossipNodeOpts {
  */
 const defaultOpts = {
   web3Provider: process.env.WEB3_PROVIDER ?? '',
+  datadir: './datadirs/datadir',
   peerId: null,
   hostname: '0.0.0.0',
   port: 8998,
   graphqlPort: 4000,
   bootnodes: [],
-  minPeers: 3,
-  maxPeers: 7,
+  minConnections: 5,
+  maxConnections: 15,
   collectionAddresses: [],
-  collectionEvents: Object.values(OrderEvent) as OrderEvent[],
   maxOrders: 100_000,
   maxOrdersPerOfferer: 100,
   maxOrderStartTime: 14,
@@ -197,19 +219,8 @@ const defaultOpts = {
   logger: null,
   logLevel: 'info',
   logColor: Color.FG_WHITE,
-}
-
-/**
- * Default OpenSea bootstrap signaling servers
- * Format: `[chainId]: dnsaddr`
- */
-const _bootstrapPeers = {
-  [1]: '/dnsaddr/eth-mainnet.bootstrap.seaport.opensea.io/p2p/Qm...',
-  [5]: '/dnsaddr/eth-goerli.bootstrap.seaport.opensea.io/p2p/Qm...',
-  [10]: '/dnsaddr/optimism-mainnet.bootstrap.seaport.opensea.io/p2p/Qm...',
-  [420]: '/dnsaddr/optimism-goerli.bootstrap.seaport.opensea.io/p2p/Qm...',
-  [137]: '/dnsaddr/polygon-mainnet.bootstrap.seaport.opensea.io/p2p/Qm...',
-  [80001]: '/dnsaddr/polygon-mumbai.bootstrap.seaport.opensea.io/p2p/Qm...',
+  clientMode: true,
+  customLibp2pConfig: {},
 }
 
 /**
@@ -218,9 +229,9 @@ const _bootstrapPeers = {
 export class SeaportGossipNode {
   public libp2p!: Libp2p
   public running = false
-  public subscriptions: { [key: Address]: OrderEvent[] } = {}
 
   private opts: Required<SeaportGossipNodeOpts>
+  private gossipsub!: GossipSub
   private graphql: ReturnType<typeof startGraphqlServer>
   private prisma: PrismaClient
   private validator: OrderValidator
@@ -239,7 +250,9 @@ export class SeaportGossipNode {
       port: this.opts.graphqlPort,
       logger: this.logger,
     })
-    this.prisma = new PrismaClient()
+    this.prisma = new PrismaClient({
+      datasources: { db: { url: `file:../${this.opts.datadir}/dev.db` } },
+    })
     this.validator = new OrderValidator({
       prisma: this.prisma,
       seaportAddress: this.opts.seaportAddress,
@@ -253,6 +266,29 @@ export class SeaportGossipNode {
   public async start() {
     if (this.running) return
 
+    const seaportDHT = new KadDHT({
+      protocolPrefix: '/seaport',
+      clientMode: this.opts.clientMode,
+    })
+
+    this.gossipsub = new GossipSub({
+      allowPublishToZeroPeers: true,
+      asyncValidation: true,
+      awaitRpcHandler: true,
+      awaitRpcMessageHandler: true,
+      doPX: !this.opts.clientMode,
+      msgIdFn: (msg) =>
+        Uint8Array.from(
+          Buffer.concat([
+            Buffer.from(msg.topic.slice(2), 'hex'),
+            Buffer.from(
+              orderHash(uint8ArrayToOrderJSON(msg.data)).slice(2),
+              'hex'
+            ),
+          ])
+        ),
+    })
+
     const libp2pOpts = {
       peerId: this.opts.peerId ?? undefined,
       addresses: {
@@ -263,7 +299,15 @@ export class SeaportGossipNode {
       streamMuxers: [new Mplex()],
       connectionManager: {
         autoDial: true,
+        minConnections: this.opts.minConnections,
+        maxConnections: this.opts.maxConnections,
       },
+      dht: seaportDHT,
+      pubsub: this.gossipsub,
+      metrics: {
+        enabled: this.opts.metricsAddress !== null,
+      },
+      ...this.opts.customLibp2pConfig,
     }
 
     this.libp2p = await createLibp2p(libp2pOpts)
@@ -273,15 +317,21 @@ export class SeaportGossipNode {
     await this.libp2p.start()
     this.running = true
 
-    this.logger.info(`Node started. Peer ID: ${this.libp2p.peerId.toString()}`)
+    this.logger.info(
+      `Node started with Peer ID: ${this.libp2p.peerId.toString()}`
+    )
     this.logger.info(
       `Advertising the following addresses: ${this.libp2p
         .getMultiaddrs()
         .join(', ')}`
     )
 
-    for (const bootnode of this.opts.bootnodes) {
-      await this.connect(bootnode)
+    for (const address of this.opts.collectionAddresses) {
+      this.subscribe(address)
+    }
+
+    for (const [peerId, multiaddrs] of this.opts.bootnodes) {
+      await this.connect(peerId, multiaddrs)
     }
   }
 
@@ -298,25 +348,50 @@ export class SeaportGossipNode {
   }
 
   /**
-   * Connect to a node via its multiaddr.
+   * Connect to a node via its {@link PeerId}, and {@link Multiaddr} if known.
    */
-  public async connect(address: string | Multiaddr) {
-    if (typeof address === 'string') {
-      address = new Multiaddr(address)
-    }
-    this.logger.info(`Pinging remote peer at ${address.toString()}`)
+  public async connect(peerId: PeerId, multiaddrs: Multiaddr[] = []) {
+    this.logger.info(
+      `Pinging peer ${short(peerId.toString())} ${
+        multiaddrs.length > 0
+          ? `via its multiaddrs ${multiaddrs.join(', ')}`
+          : ''
+      }`
+    )
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const latency = await this.libp2p.ping(address as any)
-      this.logger.info(`Pinged ${address.toString()} in ${latency}ms`)
+      let peer: PeerInfo | undefined
+      if (multiaddrs.length > 0) {
+        await this.libp2p.peerStore.addressBook.set(peerId, multiaddrs)
+      } else {
+        peer = await this.libp2p.peerRouting.findPeer(peerId)
+        if (peer !== undefined) {
+          this.logger.info(
+            `Found peer ${peer.id.toString()}, multiaddrs are: ${peer.multiaddrs
+              .map((ma) => `${ma.toString()}/p2p/${peer?.id.toString()}`)
+              .join(', ')}`
+          )
+        } else {
+          this.logger.info(`Unable to find peer ${peerId.toString()}`)
+          return
+        }
+      }
+      this.logger.info(
+        `Dialing peer ${short(peer?.id.toString() ?? peerId.toString())}`
+      )
+      await this.libp2p.dial(peerId)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       this.logger.error(
-        `Error pinging ${address.toString()}: ${error.message ?? error}`
+        `Error storing or dialing ${peerId.toString()}: ${
+          error.message ?? error
+        }`
       )
     }
   }
 
+  /**
+   * Returns orders from the local db.
+   */
   public async getOrders(address: Address, getOpts: GetOrdersOpts = {}) {
     if (!this.running) await this.start()
     if (!isValidAddress(address)) throw ErrorInvalidAddress
@@ -335,6 +410,10 @@ export class SeaportGossipNode {
     return validOrders
   }
 
+  /**
+   * Returns an order by hash.
+   * If the order is not found in the local db, will ask connected peers for it.
+   */
   public async getOrderByHash(hash: string) {
     if (!this.running) await this.start()
     const order = await this.prisma.order.findUnique({
@@ -346,86 +425,155 @@ export class SeaportGossipNode {
     return order
   }
 
+  /**
+   * Re-validate an order by its hash.
+   * @throws {@link ErrorOrderNotFound} if the order is not found
+   */
   public async validateOrderByHash(hash: string) {
     const order = await this.getOrderByHash(hash)
     if (order === null) throw ErrorOrderNotFound
     return this.validator.validate(order)
   }
 
+  /**
+   * Add orders to the node and gossip them to the network.
+   * @returns number of new valid orders added
+   */
   public async addOrders(orders: OrderJSON[]) {
     if (!this.running) await this.start()
+    let numAdded = 0
     let numValid = 0
     for (const order of orders) {
-      const isValid = await this._addOrder(order)
-      if (isValid) numValid++
+      const [isAdded, isValid] = await addOrder(
+        this.prisma,
+        this.validator,
+        order,
+        true
+      )
+      if (isAdded) numAdded++
+      if (isValid) {
+        numValid++
+        await this._publishOrder(order)
+      }
+      this.logger.info(
+        `Added ${numAdded} new order${
+          numAdded === 1 ? '' : 's'
+        }, ${numValid} valid`
+      )
     }
-    this.logger.info(`Added ${numValid} valid new orders.`)
     return numValid
   }
 
-  private async _addOrder(order: OrderJSON, isPinned = false) {
-    if (!isOrderJSON(order)) return false
-
-    let hash: string
-    try {
-      hash = orderHash(order)
-    } catch {
-      return false
+  /**
+   * Gossips a valid order to the network.
+   */
+  private async _publishOrder(order: OrderJSON) {
+    const addresses = [...order.offer, ...order.consideration]
+      .map((item) => item.token)
+      .filter((address) => address !== zeroAddress)
+    const uniqueAddresses = [...new Set(addresses)]
+    for (const address of uniqueAddresses) {
+      try {
+        await this.gossipsub.publish(address, orderJSONToUint8Array(order))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (error: any) {
+        if (error.message === 'PublishError.Duplicate') return
+        this.logger.error(
+          `Error publishing topic ${address} for order ${orderHash(order)}: ${
+            error.message ?? error
+          }`
+        )
+      }
     }
-
-    const isValid = await this.validator.validate(order)
-    const isExpired = this.validator.isExpired(order)
-    const isCancelled = await this.validator.isCancelled(hash)
-
-    const isAuction = await this.validator.isAuction(order)
-    const isFullyFulfilled = await this.validator.isFullyFulfilled(hash)
-
-    const metadata = {
-      isValid,
-      isPinned,
-      isExpired,
-      isCancelled,
-      isAuction,
-      isFullyFulfilled,
-    }
-
-    const prismaOrder = orderJSONToPrisma(order, hash)
-
-    await this.prisma.order.upsert({
-      where: { hash },
-      update: { metadata: { update: metadata } },
-      create: {
-        ...prismaOrder,
-        metadata: {
-          create: metadata,
-        },
-      },
-    })
-
-    return isValid
   }
 
-  public async subscribe(
-    address: Address,
-    events: OrderEvent[] = this.opts.collectionEvents,
-    _onEvent: (event: OrderEvent) => void
-  ) {
-    if (!this.running) await this.start()
+  /**
+   * Subscribe to events for a collection.
+   */
+  public subscribe(address: Address, _onData?: (data: Uint8Array) => void) {
+    if (!this.running) throw ErrorNodeNotRunning
     if (!isValidAddress(address)) return false
-    if (events.length === 0) return false
-    this.subscriptions[address] = events
+    this.gossipsub.addEventListener(
+      'gossipsub:message',
+      this._handleGossipsubMessage(address, _onData).bind(this)
+    )
+    this.gossipsub.subscribe(address)
+    this.logger.info(`Subscribed to gossipsub for topic ${short(address)}`)
     return true
   }
 
-  public async unsubscribe(address: Address) {
-    if (!this.running) return
-    if (address in this.subscriptions) {
-      delete this.subscriptions[address]
-      return true
+  /**
+   * Handle receiving a gossipsub message
+   */
+  private _handleGossipsubMessage(
+    address: Address,
+    _onData?: (data: Uint8Array) => void
+  ) {
+    return async (event: CustomEvent<GossipsubMessage>) => {
+      const { msg, msgId, propagationSource } = event.detail
+      const { data, topic } = msg
+      if (topic !== address) return
+      this.logger.debug(
+        `Node received on topic ${topic}: ${Buffer.from(data).toString()}`
+      )
+      if (_onData !== undefined) _onData(data)
+
+      // Parse and validate order
+      let order
+      let acceptance
+      try {
+        order = uint8ArrayToOrderJSON(data)
+        const [isAdded, isValid] = await addOrder(
+          this.prisma,
+          this.validator,
+          order
+        )
+        acceptance = isValid
+          ? MessageAcceptance.Accept
+          : MessageAcceptance.Reject
+        this.logger.info(
+          `Received ${isValid ? 'valid' : 'invalid'} order ${short(
+            orderHash(order)
+          )} from ${short(propagationSource.toString())}, ${
+            isAdded ? 'added' : 'not added'
+          } to db ${isValid && !isAdded ? ' (already existed)' : ''}`
+        )
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (error: any) {
+        this.logger.error(
+          `Error handling pubsub message for order ${
+            order !== undefined
+              ? `order hash ${orderHash(order)}`
+              : `msgId ${msgId}`
+          }: ${error.message ?? error}`
+        )
+        acceptance = MessageAcceptance.Reject
+      }
+      this.gossipsub.reportMessageValidationResult(
+        msgId,
+        propagationSource,
+        acceptance
+      )
     }
-    return false
   }
 
+  /**
+   * Unsubscribe from all events for a collection.
+   */
+  public unsubscribe(address: Address) {
+    if (!this.running) return
+    if (!(address in this.gossipsub.getTopics())) {
+      this.logger.warn(`No active subscription found for ${address}`)
+      return false
+    }
+    this.gossipsub.unsubscribe(address)
+    this.logger.info(`Unsubscribed from gossipsub for topic ${address}`)
+    return true
+  }
+
+  /**
+   * Return current stats for the node.
+   */
   public async stats() {
     return {}
   }
@@ -458,6 +606,9 @@ export class SeaportGossipNode {
     await this.prisma.$transaction(batch)
   }
 
+  /**
+   * Add libp2p listeners for peer:discovery, peer:connect, peer:disconnect
+   */
   private _addListeners() {
     this.libp2p.addEventListener(
       'peer:discovery',
@@ -473,6 +624,9 @@ export class SeaportGossipNode {
     )
   }
 
+  /**
+   * Remove libp2p listeners for peer:discovery, peer:connect, peer:disconnect
+   */
   private _removeListeners() {
     this.libp2p.removeEventListener(
       'peer:discovery',
@@ -488,22 +642,31 @@ export class SeaportGossipNode {
     )
   }
 
+  /**
+   * Emit a log on peer discovery.
+   */
   private _onPeerDiscovery(event: Libp2pEvents['peer:discovery']) {
     const peer = event.detail
-    this.logger.info(`Discovered Peer ID: ${peer.id.toString()}`)
+    this.logger.info(`Discovered peer ${short(peer.id.toString())}`)
   }
 
+  /**
+   * Emit a log on peer connect.
+   */
   private _onPeerConnect(event: ConnectionManagerEvents['peer:connect']) {
     const connection = event.detail
     this.logger.info(
-      `Connected to Peer ID: ${connection.remotePeer.toString()}`
+      `Connected to peer ${short(connection.remotePeer.toString())}`
     )
   }
 
+  /**
+   * Emit a log on peer disconnect.
+   */
   private _onPeerDisconnect(event: ConnectionManagerEvents['peer:disconnect']) {
     const connection = event.detail
     this.logger.info(
-      `Disconnected from Peer ID: ${connection.remotePeer.toString()}`
+      `Disconnected from peer ${short(connection.remotePeer.toString())}`
     )
   }
 }

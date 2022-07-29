@@ -2,11 +2,20 @@ import { ErrorTokenIdNumberTooLarge } from '../errors.js'
 import { OrderFilter, OrderSort, Side } from '../types.js'
 import {
   compareOrdersByCurrentPrice,
+  isOrderJSON,
+  orderHash,
   orderHashesFor,
+  orderJSONToPrisma,
   timestampNow,
 } from '../util/helpers.js'
 
-import type { Address, OrderFilterOpts, OrderWithItems } from '../types.js'
+import type {
+  Address,
+  OrderFilterOpts,
+  OrderJSON,
+  OrderWithItems,
+} from '../types.js'
+import type { OrderValidator } from '../validate/order.js'
 import type { Prisma, PrismaClient } from '@prisma/client'
 
 export interface GetOrdersOpts {
@@ -253,4 +262,57 @@ export const queryOrders = async (
   }
 
   return orders
+}
+
+/**
+ * Adds an order to the db if valid.
+ * If the order already exists in the db, updates its metadata to the latest.
+ * @param isPinned pass true if this is a locally submitted order and should be pinned
+ */
+export const addOrder = async (
+  prisma: PrismaClient,
+  validator: OrderValidator,
+  order: OrderJSON,
+  isPinned = false
+): Promise<[isAdded: boolean, isValid: boolean]> => {
+  if (!isOrderJSON(order)) return [false, false]
+
+  let hash: string
+  try {
+    hash = orderHash(order)
+  } catch {
+    return [false, false]
+  }
+
+  const orderAlreadyExistsInDB =
+    (await prisma.order.findFirst({ where: { hash } })) !== null
+
+  const isAuction = await validator.isAuction(order)
+  const isCancelled = await validator.isCancelled(hash)
+  const isFullyFulfilled = await validator.isFullyFulfilled(hash)
+  const isValid = await validator.validate(order)
+
+  const metadata = {
+    isAuction,
+    isCancelled,
+    isFullyFulfilled,
+    isPinned,
+    isValid,
+  }
+
+  const prismaOrder = orderJSONToPrisma(order, hash)
+
+  if (isValid || orderAlreadyExistsInDB || isPinned)
+    await prisma.order.upsert({
+      where: { hash },
+      update: { metadata: { update: metadata } },
+      create: {
+        ...prismaOrder,
+        metadata: {
+          create: metadata,
+        },
+      },
+    })
+
+  return [!orderAlreadyExistsInDB, isValid]
 }

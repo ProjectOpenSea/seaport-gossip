@@ -1,6 +1,8 @@
 import { createLogger, format, transports } from 'winston'
 import DailyRotateFile from 'winston-daily-rotate-file'
 
+import { short } from './helpers.js'
+
 import type { LoggerOptions } from 'winston'
 
 const { combine, timestamp, label, printf, colorize } = format
@@ -48,24 +50,17 @@ const logFormat = (color?: Color) =>
 
 const timestampFormat = { format: 'YYYY-MM-DD HH:mm:ss' }
 
-const shortPeerId = (peerId?: string) => {
-  if (peerId === undefined) return
-  return `${peerId.slice(0, 6)}…${peerId.slice(46, 52)}`
-}
-
 export const createWinstonLogger = (
   options: LoggerOptions = { level: 'warn' },
   peerId?: string,
   logColor = Color.FG_YELLOW
 ) => {
-  peerId = shortPeerId(peerId)
-
   const winstonTransports = []
   // Log to the console (with colors enabled)
   winstonTransports.push(
     new transports.Console({
       format: combine(
-        label({ label: peerId }),
+        label({ label: short(peerId) }),
         timestamp(timestampFormat),
         colorize(),
         logFormat(logColor)
@@ -84,7 +79,7 @@ export const createWinstonLogger = (
         maxSize: '20m',
         maxFiles: '14d',
         format: combine(
-          label({ label: peerId }),
+          label({ label: short(peerId) }),
           timestamp(timestampFormat),
           logFormat()
         ),
