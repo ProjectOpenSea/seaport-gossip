@@ -29,7 +29,11 @@
     "start:cli": "ts-node-esm src/bin/cli.ts",
     "start:dev": "ts-node-esm src/bin/start.ts",
     "start:devnet": "NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 ts-node-esm scripts/simulate/run-local-net.ts",
-    "test": "NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 mocha test/**/*.spec.ts"
+    "test": "NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 mocha test/**/*.spec.ts",
+    "prepare": "husky install"
+  },
+  "lint-staged": {
+    "*.ts": "yarn lint:fix"
   },
   "prisma": {
     "seed": "ts-node-esm prisma/seed.ts"
@@ -75,6 +79,8 @@
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-import": "^2.26.0",
     "eslint-plugin-prettier": "^4.2.1",
+    "husky": "^8.0.1",
+    "lint-staged": "^13.0.3",
     "mocha": "^10.0.0",
     "prettier": "^2.7.1",
     "prisma": "^4.1.0",
