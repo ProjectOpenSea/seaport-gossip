@@ -1,22 +1,27 @@
-import { ErrorTokenIdNumberTooLarge } from '../errors.js'
-import { OrderFilter, OrderSort, Side } from '../types.js'
+import { ethers } from 'ethers'
+
+import { orderJSONToPrisma } from '../util/convert.js'
+import { ErrorTokenIdNumberTooLarge } from '../util/errors.js'
+import {
+  orderJSONToChecksummedAddresses,
+  timestampNow,
+} from '../util/helpers.js'
 import {
   compareOrdersByCurrentPrice,
   isOrderJSON,
   orderHash,
   orderHashesFor,
-  orderJSONToPrisma,
-  timestampNow,
-} from '../util/helpers.js'
+} from '../util/order.js'
+import { OrderFilter, OrderSort, Side } from '../util/types.js'
 
 import type {
   Address,
   OrderFilterOpts,
   OrderJSON,
   OrderWithItems,
-} from '../types.js'
+} from '../util/types.js'
 import type { OrderValidator } from '../validate/order.js'
-import type { Prisma, PrismaClient } from '@prisma/client'
+import type { OrderMetadata, Prisma, PrismaClient } from '@prisma/client'
 
 export interface GetOrdersOpts {
   /** Whether to return BUY or SELL offers. Default: SELL */
@@ -36,6 +41,9 @@ export interface GetOrdersOpts {
 
   /** Filter options. Default: no filtering */
   filter?: OrderFilterOpts
+
+  /** Only return the order count for the query. Ignores count and offset params. */
+  onlyCount?: boolean
 }
 
 const defaultGetOrdersOpts = {
@@ -45,6 +53,7 @@ const defaultGetOrdersOpts = {
   offset: 0,
   sort: OrderSort.NEWEST,
   filter: {},
+  onlyCount: false,
 }
 
 export const formatGetOrdersOpts = (
@@ -65,6 +74,9 @@ export const queryOrders = async (
   if (opts.count > 1000)
     throw new Error('getOrders count cannot exceed 1000 per query')
 
+  // Checksum the address
+  address = ethers.utils.getAddress(address)
+
   const itemSide = opts.side === Side.BUY ? 'consideration' : 'offer'
 
   const side =
@@ -72,20 +84,27 @@ export const queryOrders = async (
       ? { consideration: { some: { token: address } } }
       : { offer: { some: { token: address } } }
 
-  let prismaOpts: Prisma.OrderFindManyArgs = {
+  let prismaOpts: Prisma.OrderFindManyArgs | Prisma.OrderCountArgs = {
     where: {
       ...side,
       endTime: { gt: timestampNow() + 5 },
     },
-    include: {
+  }
+
+  if (!opts.onlyCount) {
+    ;(prismaOpts as Prisma.OrderFindManyArgs).include = {
       offer: true,
       consideration: true,
-    },
+    }
   }
 
   // Apply count and offset if we are not sorting by price asc or desc,
   // since we will need all rows to calculate and sort by current price.
-  if (opts.sort !== OrderSort.PRICE_ASC && opts.sort !== OrderSort.PRICE_DESC) {
+  if (
+    opts.sort !== OrderSort.PRICE_ASC &&
+    opts.sort !== OrderSort.PRICE_DESC &&
+    opts.onlyCount === false
+  ) {
     prismaOpts.take = opts.count
     prismaOpts.skip = opts.offset
   }
@@ -144,7 +163,7 @@ export const queryOrders = async (
 
   for (const filterArg of Object.entries(opts.filter)) {
     const [filter, arg]: [OrderFilter, string | bigint | boolean] =
-      filterArg as any // eslint-disable-line @typescript-eslint/no-explicit-any
+      filterArg as any
 
     // Skip filter if arg is false or undefined
     if (arg === false || arg === undefined) continue
@@ -250,12 +269,23 @@ export const queryOrders = async (
     }
   }
 
-  let orders = (await prisma.order.findMany(
-    prismaOpts
-  )) as unknown as OrderWithItems[]
+  let orders
+  if (opts.onlyCount) {
+    orders = await prisma.order.count({
+      ...prismaOpts,
+      select: true,
+    })
+  } else {
+    orders = await prisma.order.findMany(prismaOpts as Prisma.OrderFindManyArgs)
+  }
 
-  if (opts.sort === OrderSort.PRICE_ASC || opts.sort === OrderSort.PRICE_DESC) {
-    orders = orders.sort(compareOrdersByCurrentPrice(opts.side, opts.sort))
+  if (
+    !opts.onlyCount &&
+    (opts.sort === OrderSort.PRICE_ASC || opts.sort === OrderSort.PRICE_DESC)
+  ) {
+    orders = (orders as OrderWithItems[]).sort(
+      compareOrdersByCurrentPrice(opts.side, opts.sort)
+    )
 
     // Apply count and offset
     orders = orders.slice(opts.offset, opts.offset + opts.count)
@@ -274,35 +304,38 @@ export const addOrder = async (
   validator: OrderValidator,
   order: OrderJSON,
   isPinned = false
-): Promise<[isAdded: boolean, isValid: boolean]> => {
-  if (!isOrderJSON(order)) return [false, false]
+): Promise<[isAdded: boolean, metadata: OrderMetadata]> => {
+  if (!isOrderJSON(order)) throw new Error('invalid order format')
+
+  orderJSONToChecksummedAddresses(order)
 
   let hash: string
   try {
     hash = orderHash(order)
-  } catch {
-    return [false, false]
+  } catch (error: any) {
+    throw new Error(`Error parsing order hash: ${error.message ?? error}`)
   }
 
   const orderAlreadyExistsInDB =
     (await prisma.order.findFirst({ where: { hash } })) !== null
 
   const isAuction = await validator.isAuction(order)
-  const isCancelled = await validator.isCancelled(hash)
   const isFullyFulfilled = await validator.isFullyFulfilled(hash)
-  const isValid = await validator.validate(order)
+  const [isValid, _, lastValidatedBlockNumber, lastValidatedBlockHash] =
+    await validator.validate(order)
 
   const metadata = {
     isAuction,
-    isCancelled,
     isFullyFulfilled,
     isPinned,
     isValid,
+    lastValidatedBlockNumber,
+    lastValidatedBlockHash,
   }
 
   const prismaOrder = orderJSONToPrisma(order, hash)
 
-  if (isValid || orderAlreadyExistsInDB || isPinned)
+  if (isValid === true || orderAlreadyExistsInDB || isPinned)
     await prisma.order.upsert({
       where: { hash },
       update: { metadata: { update: metadata } },
@@ -314,5 +347,11 @@ export const addOrder = async (
       },
     })
 
-  return [!orderAlreadyExistsInDB, isValid]
+  const orderMetadata = await prisma.orderMetadata.findFirst({
+    where: { orderHash: hash },
+  })
+
+  if (orderMetadata === null) throw new Error('order metadata missing')
+
+  return [!orderAlreadyExistsInDB, orderMetadata]
 }

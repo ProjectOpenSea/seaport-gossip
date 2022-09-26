@@ -48,7 +48,6 @@ CREATE TABLE "OrderMetadata" (
     "orderHash" TEXT NOT NULL PRIMARY KEY,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "isValid" BOOLEAN NOT NULL,
-    "isCancelled" BOOLEAN NOT NULL,
     "isAuction" BOOLEAN NOT NULL,
     "isFullyFulfilled" BOOLEAN NOT NULL,
     "lastFulfilledAt" DATETIME,

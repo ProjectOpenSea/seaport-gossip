@@ -202,6 +202,7 @@ module.exports = {
     'no-debugger': 'error',
     'no-duplicate-case': 'error',
     'no-eval': 'error',
+    '@typescript-eslint/no-explicit-any': 'off',
     'no-extra-bind': 'error',
     'no-multiple-empty-lines': ['error', { max: 1, maxBOF: 0, maxEOF: 0 }],
     'no-new-func': 'error',
@@ -239,7 +240,7 @@ module.exports = {
         patterns: ['src'],
       },
     ],
-    "sort-imports": ["error", { ignoreDeclarationSort: true }],
+    'sort-imports': ['error', { ignoreDeclarationSort: true }],
   },
   overrides: [
     {

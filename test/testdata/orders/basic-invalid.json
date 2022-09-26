@@ -1,15 +1,7 @@
 [
   {
     "offerer": "0xf0E16c071E2cd421974dCb76d9af4DeDB578E059",
-    "offer": [
-      {
-        "itemType": 1,
-        "token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-        "identifierOrCriteria": "0",
-        "startAmount": "100000000000000000",
-        "endAmount": "100000000000000000"
-      }
-    ],
+    "offer": [],
     "consideration": [
       {
         "itemType": 4,
@@ -24,7 +16,8 @@
         "token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
         "identifierOrCriteria": "0",
         "startAmount": "2500000000000000",
-        "endAmount": "2500000000000000"
+        "endAmount": "2500000000000000",
+        "recipient": "0xf0E16c071E2cd421974dCb76d9af4DeDB578E059"
       }
     ],
     "startTime": 0,

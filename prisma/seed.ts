@@ -56,7 +56,6 @@ async function main() {
       metadata: {
         create: {
           isValid: true,
-          isCancelled: false,
           isPinned: false,
           isRemoved: false,
           isAuction: false,
@@ -122,11 +121,13 @@ async function main() {
       metadata: {
         create: {
           isValid: false,
-          isCancelled: false,
           isPinned: true,
           isRemoved: false,
           isAuction: false,
           isFullyFulfilled: false,
+          lastValidatedBlockNumber: '12345678',
+          lastValidatedBlockHash:
+            '0x0000000000000000000000000000000000000000000000000000000000000000',
         },
       },
     },

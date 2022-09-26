@@ -25,7 +25,6 @@ describe('Criteria', () => {
 
   it('should throw error when trie is uninitialized', async () => {
     const tokenIds = [0n, 2n, 1n]
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const criteria = new (Criteria as any)(tokenIds)
     await expect(criteria.createProof(2n)).to.eventually.be.rejectedWith(
       ErrorCriteriaNotInit

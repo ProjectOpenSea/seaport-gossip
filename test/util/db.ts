@@ -5,7 +5,6 @@ import type { PrismaClient } from '@prisma/client'
  * Truncates all rows from Prisma tables
  */
 export const truncateTables = async (node: SeaportGossipNode) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const prisma: PrismaClient = (node as any).prisma
 
   const tables = await prisma.$queryRaw<

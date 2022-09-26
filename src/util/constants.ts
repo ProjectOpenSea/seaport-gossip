@@ -1,8 +1,14 @@
-import { Multiaddr } from '@multiformats/multiaddr'
+import { multiaddr } from '@multiformats/multiaddr'
+
+import type { Multiaddr } from '@multiformats/multiaddr'
 
 /** The default Seaport address */
 export const DEFAULT_SEAPORT_ADDRESS =
   '0x00000000006c3852cbEf3e08E8dF289169EdE581'
+
+/** OpenSea's Fee Recipient address, for validating valid OpenSea Seaport orders */
+export const OPENSEA_FEE_RECIPIENT =
+  '0x0000a26b00c1F0DF003000390027140000fAa719'
 
 /**
  * OpenSea bootstrap signaling servers
@@ -12,27 +18,27 @@ export const openseaBootstrapNodes: {
 } = {
   ['1']: [
     'Qm...',
-    new Multiaddr('/dnsaddr/eth-mainnet.bootstrap.seaport.opensea.io'),
+    multiaddr('/dnsaddr/eth-mainnet.bootstrap.seaport.opensea.io'),
   ],
   ['5']: [
     'Qm...',
-    new Multiaddr('/dnsaddr/eth-goerli.bootstrap.seaport.opensea.io'),
+    multiaddr('/dnsaddr/eth-goerli.bootstrap.seaport.opensea.io'),
   ],
   ['10']: [
     'Qm...',
-    new Multiaddr('/dnsaddr/optimism-mainnet.bootstrap.seaport.opensea.io'),
+    multiaddr('/dnsaddr/optimism-mainnet.bootstrap.seaport.opensea.io'),
   ],
   ['420']: [
     'Qm...',
-    new Multiaddr('/dnsaddr/optimism-goerli.bootstrap.seaport.opensea.io'),
+    multiaddr('/dnsaddr/optimism-goerli.bootstrap.seaport.opensea.io'),
   ],
   ['137']: [
     'Qm...',
-    new Multiaddr('/dnsaddr/polygon-mainnet.bootstrap.seaport.opensea.io'),
+    multiaddr('/dnsaddr/polygon-mainnet.bootstrap.seaport.opensea.io'),
   ],
   ['80001']: [
     'Qm...',
-    new Multiaddr('/dnsaddr/polygon-mumbai.bootstrap.seaport.opensea.io'),
+    multiaddr('/dnsaddr/polygon-mumbai.bootstrap.seaport.opensea.io'),
   ],
 }
 

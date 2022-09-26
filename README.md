@@ -79,12 +79,16 @@ const newOrders = [{}, {}]
 const numValid = await node.addOrders(newOrders)
 console.log(`Valid added orders: ${numValid}`)
 
-node.subscribe('0xabc', [OrderEvent.FULFILLED, OrderEvent.CANCELLED], (event) =>
+node.subscribe('0xabc', (event) =>
   console.log(`New event for 0xabc: ${event}`)
 )
 ```
 
 ### CLI
+
+Ensure you set the proper environment variables:
+
+`source example.env`
 
 Start a node with the GraphQL server enabled:
 

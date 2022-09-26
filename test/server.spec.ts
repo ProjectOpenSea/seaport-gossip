@@ -20,7 +20,6 @@ describe('Server', () => {
 
   it('should return a valid response', async () => {
     const server = startGraphqlServer()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query = { document: '{ orders { hash } }' } as any
     const { response, executionResult } = await server.inject(query)
 

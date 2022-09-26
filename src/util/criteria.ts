@@ -1,4 +1,4 @@
-import { SecureTrie as Trie } from '@ethereumjs/trie'
+import { Trie } from '@ethereumjs/trie'
 import { toBufferBE } from 'bigint-buffer'
 import { keccak256 } from 'ethers/lib/utils.js'
 
@@ -19,7 +19,7 @@ export class Criteria {
 
   private constructor(tokenIds: bigint[]) {
     this.tokenIds = tokenIds
-    this.trie = new Trie()
+    this.trie = new Trie({ useKeyHashing: true })
   }
 
   public static async create(tokenIds: bigint[]) {
@@ -35,20 +35,20 @@ export class Criteria {
 
   public root() {
     if (!this.initialized) throw ErrorCriteriaNotInit
-    return `0x${this.trie.root.toString('hex')}`
+    return `0x${this.trie.root().toString('hex')}`
   }
 
   public async createProof(tokenId: bigint) {
     if (!this.initialized) throw ErrorCriteriaNotInit
     if (!this.tokenIds.includes(tokenId)) throw ErrorCriteriaTokenIdNotInSet
-    return Trie.createProof(this.trie, this._key(tokenId))
+    return this.trie.createProof(this._key(tokenId))
   }
 
   public async verifyProof(tokenId: bigint, proof: Proof) {
     if (!this.initialized) throw ErrorCriteriaNotInit
 
     try {
-      await Trie.verifyProof(this.trie.root, this._key(tokenId), proof)
+      await this.trie.verifyProof(this.trie.root(), this._key(tokenId), proof)
       return true
     } catch {
       return false
@@ -57,7 +57,7 @@ export class Criteria {
 
   /**
    * Returns the formatted key for a given tokenId.
-   * The SecureTrie ({@link Trie}) hashes the key with keccak256 on input.
+   * The {@link Trie} hashes the key with keccak256 on input.
    */
   private _key(tokenId: bigint) {
     return toBufferBE(tokenId, 64)

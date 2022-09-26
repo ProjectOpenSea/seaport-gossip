@@ -8,7 +8,7 @@
  */
 
 import { createEd25519PeerId } from '@libp2p/peer-id-factory'
-import { Multiaddr } from '@multiformats/multiaddr'
+import { multiaddr } from '@multiformats/multiaddr'
 import process from 'node:process'
 import { setTimeout } from 'timers/promises'
 
@@ -19,8 +19,9 @@ import validBasicOrders from '../../test/testdata/orders/basic-valid.json' asser
 import { truncateTables } from '../../test/util/db.js'
 import { MockProvider } from '../../test/util/provider.js'
 
-import type { SeaportGossipNodeOpts } from '../../dist/node.js'
-import type { PeerId } from '@libp2p/interfaces/peer-id'
+import type { SeaportGossipNodeOpts } from '../../dist/util/types.js'
+import type { PeerId } from '@libp2p/interface-peer-id'
+import type { Multiaddr } from '@multiformats/multiaddr'
 
 const opts: SeaportGossipNodeOpts = {
   web3Provider: new MockProvider('mainnet'),
@@ -32,15 +33,15 @@ const opts: SeaportGossipNodeOpts = {
 }
 
 const node1PeerId = await createEd25519PeerId()
-const node1Multiaddr = new Multiaddr('/ip4/0.0.0.0/tcp/8998/ws')
+const node1Multiaddr = multiaddr('/ip4/0.0.0.0/tcp/8998/ws')
 const node1Bootnode: [PeerId, Multiaddr[]] = [node1PeerId, [node1Multiaddr]]
 
 const node2PeerId = await createEd25519PeerId()
-const node2Multiaddr = new Multiaddr('/ip4/0.0.0.0/tcp/8997/ws')
+const node2Multiaddr = multiaddr('/ip4/0.0.0.0/tcp/8997/ws')
 const node2Bootnode: [PeerId, Multiaddr[]] = [node2PeerId, [node2Multiaddr]]
 
 const node3PeerId = await createEd25519PeerId()
-const node3Multiaddr = new Multiaddr('/ip4/0.0.0.0/tcp/8996/ws')
+const node3Multiaddr = multiaddr('/ip4/0.0.0.0/tcp/8996/ws')
 const _node3Bootnode = [node3PeerId, [node3Multiaddr]]
 
 const denyDialPeer = (denyPeerId: PeerId) => (incomingPeerId: PeerId) => {
@@ -113,10 +114,8 @@ await node3.addOrders([validBasicOrders[1]])
 
 /*
 const invalidOrder = invalidBasicOrders[0]
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 await node3.addOrders([invalidOrder] as any)
 
 // Force gossip invalid order to connected peer
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 await (node3 as any)._publishOrder(invalidOrder)
 */
