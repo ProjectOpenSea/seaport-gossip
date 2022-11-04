@@ -18,7 +18,7 @@ export interface SeaportGossipNodeOpts {
    * This can also be a url specified via environment variable `WEB3_PROVIDER`.
    * The ethereum chain ID this node will use will be requested from this provider via `eth_chainId`.
    */
-  web3Provider?: string | ethers.providers.Provider
+  web3Provider?: string | ethers.providers.JsonRpcProvider
 
   /**
    * Path to the datadir to use (dev.db must be located inside)
@@ -128,6 +128,17 @@ export interface SeaportGossipNodeOpts {
   seaportAddress?: Address
 
   /**
+   * Whether to ingest orders from the OpenSea API.
+   * An OpenSea API key must also be provided.
+   */
+  ingestOpenSeaOrders?: boolean
+
+  /**
+   * An OpenSea API key to ingest orders from the OpenSea API
+   */
+  openSeaAPIKey?: string
+
+  /**
    * Enable metrics by passing a Prometheus IP and port (e.g. `127.0.0.1:9090`)
    * Default: disabled
    */
@@ -177,7 +188,7 @@ export const seaportGossipNodeDefaultOpts = {
   bootnodes: [],
   minConnections: 5,
   maxConnections: 15,
-  collectionAddresses: [],
+  collectionAddresses: process.env.COLLECTION_ADDRESSES?.split(',') ?? [],
   maxOrders: 100_000,
   maxOrdersPerOfferer: 100,
   maxOrderStartTime: 14,
@@ -185,9 +196,14 @@ export const seaportGossipNodeDefaultOpts = {
   maxOrderHistory: 7,
   maxRPCRequestsPerDay: 25_000,
   seaportAddress: process.env.SEAPORT_ADDRESS ?? DEFAULT_SEAPORT_ADDRESS,
+  ingestOpenSeaOrders:
+    process.env.INGEST_OPENSEA_ORDERS !== undefined
+      ? Boolean(process.env.INGEST_OPENSEA_ORDERS)
+      : false,
+  openSeaAPIKey: process.env.OPENSEA_API_KEY ?? '',
   metricsAddress: null,
   logger: null,
-  logLevel: 'info',
+  logLevel: process.env.LOG_LEVEL ?? 'info',
   logColor: Color.FG_WHITE,
   clientMode: true,
   customLibp2pConfig: {},
@@ -260,6 +276,13 @@ export enum Side {
   SELL,
 }
 
+export enum SeaportEvent {
+  ORDER_FULFILLED = 'OrderFulfilled',
+  ORDER_CANCELLED = 'OrderCancelled',
+  ORDER_VALIDATED = 'OrderValidated',
+  COUNTER_INCREMENTED = 'CounterIncremented',
+}
+
 /**
  * Opts for {@link OrderFilter}.
  * Note: any filters omitted or passed with `false` will be ignored.
@@ -307,6 +330,15 @@ export interface ConsiderationItemJSON extends OfferItemJSON {
 
 export type ItemJSON = OfferItemJSON | ConsiderationItemJSON
 
+export interface SpentItem {
+  itemType: ItemType
+  token: Address
+  identifier: string
+  amount: string
+}
+export interface ReceivedItem extends SpentItem {
+  recipient: Address
+}
 export interface OrderJSON {
   offer: OfferItemJSON[]
   consideration: ConsiderationItemJSON[]

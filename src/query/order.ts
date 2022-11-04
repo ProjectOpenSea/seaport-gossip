@@ -8,8 +8,8 @@ import {
 } from '../util/helpers.js'
 import {
   compareOrdersByCurrentPrice,
+  deriveOrderHash,
   isOrderJSON,
-  orderHash,
   orderHashesFor,
 } from '../util/order.js'
 import { OrderFilter, OrderSort, Side } from '../util/types.js'
@@ -74,15 +74,18 @@ export const queryOrders = async (
   if (opts.count > 1000)
     throw new Error('getOrders count cannot exceed 1000 per query')
 
-  // Checksum the address
-  address = ethers.utils.getAddress(address)
-
   const itemSide = opts.side === Side.BUY ? 'consideration' : 'offer'
 
-  const side =
-    opts.side === Side.BUY
-      ? { consideration: { some: { token: address } } }
-      : { offer: { some: { token: address } } }
+  let side
+  if (address !== '*') {
+    // Checksum the address
+    address = ethers.utils.getAddress(address)
+
+    side =
+      opts.side === Side.BUY
+        ? { consideration: { some: { token: address } } }
+        : { offer: { some: { token: address } } }
+  }
 
   let prismaOpts: Prisma.OrderFindManyArgs | Prisma.OrderCountArgs = {
     where: {
@@ -311,7 +314,7 @@ export const addOrder = async (
 
   let hash: string
   try {
-    hash = orderHash(order)
+    hash = deriveOrderHash(order)
   } catch (error: any) {
     throw new Error(`Error parsing order hash: ${error.message ?? error}`)
   }

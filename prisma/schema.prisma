@@ -79,7 +79,7 @@ model OrderMetadata {
   isAuction Boolean /// when order is restricted and zone is an EOA. in the future may have whitelisted "auction" zones
 
   isFullyFulfilled   Boolean
-  lastFulfilledAt    DateTime?
+  lastFulfilledAt    String?
   lastFulfilledPrice String?
 
   isPinned  Boolean @default(false)

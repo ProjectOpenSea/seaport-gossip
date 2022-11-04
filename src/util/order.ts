@@ -88,10 +88,9 @@ const toConsiderationHash = (considerationItem: ConsiderationItemJSON) => {
 /**
  * Calculates the order hash from the order components.
  */
-export const orderHash = (order: OrderJSON) => {
+export const deriveOrderHash = (order: OrderJSON) => {
   const offerComponents = order.offer
-    .map((offerItem) => toOfferHash(offerItem))
-    .slice(2)
+    .map((offerItem) => toOfferHash(offerItem).slice(2))
     .join('')
   const offerHash = keccak256(`0x${offerComponents}`)
 
@@ -112,10 +111,6 @@ export const orderHash = (order: OrderJSON) => {
     order.zoneHash.slice(2),
     BigNumber.from(order.salt).toHexString().slice(2).padStart(64, '0'),
     order.conduitKey.slice(2).padStart(64, '0'),
-    BigNumber.from(order.consideration.length)
-      .toHexString()
-      .slice(2)
-      .padStart(64, '0'),
     BigNumber.from(order.counter).toHexString().slice(2).padStart(64, '0'),
   ].join('')
 

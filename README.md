@@ -62,6 +62,8 @@ import { SeaportGossipNode, OrderEvent, OrderSort } from 'seaport-gossip'
 const opts = {
   // A web3 provider allows your node to validate orders
   web3Provider: 'localhost:8550',
+  // Provide the collection addresses you would like to listen to
+  collectionAddresses: ["0x942bc2d3e7a589fe5bd4a5c6ef9727dfd82f5c8a"],
   // Default values:
   maxOrders: 100_000, // ~100MB (~1KB per order)
   maxOrdersPerOfferer: 100, // to mitigate order spam
@@ -93,22 +95,6 @@ Ensure you set the proper environment variables:
 Start a node with the GraphQL server enabled:
 
 `seaport-gossip start`
-
-Return orders for a collection:
-
-`seaport-gossip getOrders [address]`
-
-Add an order to the network:
-
-`seaport-gossip addOrder [order]`
-
-Subscribe to events for a collection (runs until stopped with CTRL+C):
-
-`seaport-gossip subscribe [address] [optional comma-separated event types, default: all events]`
-
-Return stats for your node:
-
-`seaport-gossip stats`
 
 ## API
 

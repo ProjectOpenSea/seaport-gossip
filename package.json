@@ -20,14 +20,15 @@
     "seaport-gossip": "./dist/bin/cli.js"
   },
   "scripts": {
+    "postinstall": "yarn fixStreamJSTypeImports",
+    "fixStreamJSTypeImports": "npx json -I -f node_modules/@opensea/stream-js/package.json -e \"this.exports.types='./dist/index.d.ts'\" && npx replace \"client'\" \"client.js'\" node_modules/@opensea/stream-js/dist/index.d.ts && npx replace \"types'\" \"types.js'\" node_modules/@opensea/stream-js/dist/index.d.ts",
     "build": "yarn prisma:generate && yarn build:ts",
     "build:ts": "tsc -p tsconfig.prod.json",
     "lint": "eslint src test prisma",
     "lint:fix": "eslint src test prisma --fix",
     "prisma:generate": "SKIP_PRISMA_VERSION_CHECK=true prisma generate",
     "prisma:migrate": "prisma migrate",
-    "start:cli": "ts-node-esm src/bin/cli.ts",
-    "start:dev": "ts-node-esm src/bin/start.ts",
+    "start": "NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 ts-node-esm src/bin/start.ts",
     "start:devnet": "NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 ts-node-esm scripts/simulate/run-local-net.ts",
     "test": "NODE_OPTIONS='--experimental-json-modules' NODE_NO_WARNINGS=1 mocha test/**/*.spec.ts --timeout 5000",
     "prepare": "husky install"
@@ -50,7 +51,9 @@
     "@libp2p/websockets": "^3.0.4",
     "@multiformats/multiaddr": "^11.0.0",
     "@opensea/seaport-order-validator": "^0.1.1",
+    "@opensea/stream-js": "^0.0.21-rc.1",
     "@prisma/client": "^4.3.1",
+    "async-sema": "^3.1.1",
     "bigint-buffer": "^1.1.5",
     "class-validator": "^0.13.2",
     "ethers": "^5.7.1",
@@ -59,12 +62,14 @@
     "graphql-scalars": "^1.18.0",
     "it-pipe": "^2.0.4",
     "libp2p": "^0.39.2",
+    "node-fetch": "^3.2.10",
     "prom-client": "^14.1.0",
     "reflect-metadata": "^0.1.13",
     "type-graphql": "^1.1.1",
     "typegraphql-prisma": "^0.21.5",
     "winston": "^3.8.2",
-    "winston-daily-rotate-file": "^4.7.1"
+    "winston-daily-rotate-file": "^4.7.1",
+    "ws": "^8.10.0"
   },
   "devDependencies": {
     "@chainsafe/eslint-plugin-node": "^11.2.3",
@@ -74,6 +79,7 @@
     "@types/graphql-fields": "^1.3.4",
     "@types/mocha": "^9.1.1",
     "@types/node": "^16.11.7",
+    "@types/ws": "^8.5.3",
     "@typescript-eslint/eslint-plugin": "^5.38.1",
     "@typescript-eslint/parser": "^5.38.1",
     "chai": "^4.3.6",

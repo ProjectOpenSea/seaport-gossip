@@ -5,7 +5,10 @@ import { SeaportGossipNode } from '../dist/index.js'
 import { orderToJSON } from '../dist/util/convert.js'
 import { ErrorInvalidAddress } from '../dist/util/errors.js'
 import { timestampNow, zeroAddress } from '../dist/util/helpers.js'
-import { compareOrdersByCurrentPrice, orderHash } from '../dist/util/order.js'
+import {
+  compareOrdersByCurrentPrice,
+  deriveOrderHash,
+} from '../dist/util/order.js'
 import { OrderFilter, OrderSort, Side } from '../dist/util/types.js'
 
 import invalidBasicOrders from './testdata/orders/basic-invalid.json' assert { type: 'json' }
@@ -125,11 +128,11 @@ describe('SeaportGossipNode', () => {
       const ordersDefaultSort = await node.getOrders(contractAddr, getOpts)
       let orderMetadata = await prisma.orderMetadata.findMany({
         where: {
-          OR: ordersDefaultSort.map((o) => ({ orderHash: orderHash(o) })),
+          OR: ordersDefaultSort.map((o) => ({ orderHash: deriveOrderHash(o) })),
         },
         orderBy: { createdAt: 'desc' },
       })
-      expect(ordersDefaultSort.map((o) => orderHash(o))).to.deep.eq(
+      expect(ordersDefaultSort.map((o) => deriveOrderHash(o))).to.deep.eq(
         orderMetadata.map((o) => o.orderHash)
       )
 
@@ -141,11 +144,11 @@ describe('SeaportGossipNode', () => {
       orders = await node.getOrders(contractAddr, getOpts)
       orderMetadata = await prisma.orderMetadata.findMany({
         where: {
-          OR: ordersDefaultSort.map((o) => ({ orderHash: orderHash(o) })),
+          OR: ordersDefaultSort.map((o) => ({ orderHash: deriveOrderHash(o) })),
         },
         orderBy: { createdAt: 'asc' },
       })
-      expect(orders.map((o) => orderHash(o))).to.deep.eq(
+      expect(orders.map((o) => deriveOrderHash(o))).to.deep.eq(
         orderMetadata.map((o) => o.orderHash)
       )
 

@@ -2,9 +2,12 @@ import { SeaportOrderValidator } from '@opensea/seaport-order-validator'
 import { ethers } from 'ethers'
 
 import ISeaport from '../contract-abi/Seaport.json' assert { type: 'json' }
-import { OPENSEA_FEE_RECIPIENT } from '../util/constants.js'
+import {
+  OPENSEA_FEE_RECIPIENT,
+  SHARED_STOREFRONT_LAZY_MINT_ADAPTER,
+} from '../util/constants.js'
 import { orderToJSON } from '../util/convert.js'
-import { isOrderWithItems, orderHash } from '../util/order.js'
+import { deriveOrderHash, isOrderWithItems } from '../util/order.js'
 
 import type {
   Address,
@@ -20,7 +23,7 @@ import type winston from 'winston'
 interface OrderValidationOpts {
   prisma: PrismaClient
   seaportAddress: Address
-  web3Provider: ethers.providers.Provider | string
+  web3Provider: ethers.providers.JsonRpcProvider
   logger: winston.Logger
   validateOpenSeaFeeRecipient: boolean
 }
@@ -34,15 +37,9 @@ export class OrderValidator {
   private validationConfiguration: ValidationConfigurationStruct
 
   constructor(opts: OrderValidationOpts) {
-    if (opts.web3Provider === '')
-      throw new Error('Please define web3Provider opt for order validation')
-
     this.prisma = opts.prisma
     this.logger = opts.logger
-    this.provider =
-      typeof opts.web3Provider === 'string'
-        ? new ethers.providers.JsonRpcProvider(opts.web3Provider)
-        : (opts.web3Provider as ethers.providers.JsonRpcProvider)
+    this.provider = opts.web3Provider
     this.seaport = new ethers.Contract(
       opts.seaportAddress,
       ISeaport,
@@ -78,7 +75,7 @@ export class OrderValidator {
   > {
     if (isOrderWithItems(order)) order = orderToJSON(order)
 
-    const hash = orderHash(order)
+    const hash = deriveOrderHash(order)
 
     const lastBlockNumber = await this.provider.getBlockNumber()
     const lastBlockHash = (await this.provider.getBlock(lastBlockNumber)).hash
@@ -94,6 +91,19 @@ export class OrderValidator {
           signature: order.signature,
         }
       )
+
+    // The OpenSea Shared Storefront Lazy Mint adapter doesn't return true
+    // for supportsInterface(IERC1155) so we will ignore that specific error.
+    if (
+      errorsAndWarnings.errors.includes(400) === true &&
+      order.offer.some(
+        (offer) => offer.token === SHARED_STOREFRONT_LAZY_MINT_ADAPTER
+      )
+    ) {
+      errorsAndWarnings.errors = errorsAndWarnings.errors.filter(
+        (e: number) => e !== 400
+      )
+    }
 
     const isValid = errorsAndWarnings.errors.length === 0
     const isInvalidDueToInsufficientApprovalsOrBalances =

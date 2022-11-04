@@ -2,7 +2,7 @@ import { ethers } from 'ethers'
 
 import { short } from './util/helpers.js'
 import {
-  orderHash,
+  deriveOrderHash,
   orderSignatureToFixed65Bytes,
   orderSignatureToVariableBytes,
 } from './util/order.js'
@@ -266,7 +266,7 @@ export const handleProtocol = async (
         )} from ${shortPeerId} (reqId: ${reqId})`
       )
       const orders = await node.getOrders(address, opts)
-      const hashes = orders.map((o) => orderHash(o))
+      const hashes = orders.map((o) => deriveOrderHash(o))
       return orderHashesEncode(reqId, hashes)
     }
     case 'OrderHashes': {

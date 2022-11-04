@@ -11,6 +11,8 @@ import { createLibp2p } from 'libp2p'
 import { Uint8ArrayList } from 'uint8arraylist'
 
 import { startGraphqlServer } from './db/index.js'
+import { OpenSeaOrderIngestor } from './ingestors/opensea.js'
+import { SeaportListener } from './listeners/seaport.js'
 import {
   criteriaDecode,
   encodeProtocol,
@@ -32,14 +34,11 @@ import {
   ErrorNodeNotRunning,
   ErrorOrderNotFound,
 } from './util/errors.js'
-import { isValidAddress, short, zeroAddress } from './util/helpers.js'
+import { publishEvent } from './util/gossipsub.js'
+import { isValidAddress, short } from './util/helpers.js'
 import { createWinstonLogger } from './util/log.js'
-import { orderHash } from './util/order.js'
-import {
-  decodeGossipsubEvent,
-  encodeGossipsubEvent,
-  gossipsubMsgIdFn,
-} from './util/serialize.js'
+import { deriveOrderHash } from './util/order.js'
+import { decodeGossipsubEvent, gossipsubMsgIdFn } from './util/serialize.js'
 import { OrderEvent, seaportGossipNodeDefaultOpts } from './util/types.js'
 import { OrderValidator } from './validate/index.js'
 
@@ -71,11 +70,16 @@ export class SeaportGossipNode {
   private prisma: PrismaClient
   private validator: OrderValidator
   private logger: winston.Logger
+  private ingestor?: OpenSeaOrderIngestor
+  private seaportListener: SeaportListener
+
+  private provider: ethers.providers.JsonRpcProvider
 
   private nextReqId = 0
-  private outboundMessagePromises: {
-    [requestId: number]: Promise<[requestId: number, message: any]>
-  } = {}
+
+  private revalidateInterval?: NodeJS.Timer
+  private REVALIDATE_INTERVAL = 60 * 1000 // 60s
+  private REVALIDATE_BLOCK_DISTANCE = 25 // 25 blocks (5 min)
 
   constructor(opts: SeaportGossipNodeOpts = {}) {
     this.opts = Object.freeze({ ...seaportGossipNodeDefaultOpts, ...opts })
@@ -93,13 +97,35 @@ export class SeaportGossipNode {
     this.prisma = new PrismaClient({
       datasources: { db: { url: `file:../${this.opts.datadir}/dev.db` } },
     })
+    this.provider =
+      typeof this.opts.web3Provider === 'string'
+        ? new ethers.providers.JsonRpcProvider(this.opts.web3Provider)
+        : this.opts.web3Provider
+
     this.validator = new OrderValidator({
       prisma: this.prisma,
       seaportAddress: this.opts.seaportAddress,
-      web3Provider: this.opts.web3Provider,
+      web3Provider: this.provider,
       logger: this.logger,
       validateOpenSeaFeeRecipient: true,
     })
+    this.seaportListener = new SeaportListener({
+      node: this,
+      prisma: this.prisma,
+      gossipsub: this.gossipsub,
+      provider: this.provider,
+      validator: this.validator,
+      logger: this.logger,
+    })
+    if (
+      this.opts.ingestOpenSeaOrders === true &&
+      this.opts.openSeaAPIKey !== ''
+    ) {
+      this.ingestor = new OpenSeaOrderIngestor({
+        node: this,
+        logger: this.logger,
+      })
+    }
   }
 
   /**
@@ -155,19 +181,26 @@ export class SeaportGossipNode {
     this.logger.info(
       `Node started with Peer ID: ${this.libp2p.peerId.toString()}`
     )
-    this.logger.info(
-      `Advertising the following addresses: ${this.libp2p
-        .getMultiaddrs()
-        .join(', ')}`
-    )
+    const displayAddrs = this.libp2p
+      .getMultiaddrs()
+      .map((a) => `                             ${a.toString()}`)
+      .join(',\n')
+    this.logger.info(`Advertising the following addresses:\n${displayAddrs}`)
 
     for (const address of this.opts.collectionAddresses) {
-      this.subscribe(address)
+      this.gossipsubSubscribe(address)
     }
 
     for (const [peerId, multiaddrs] of this.opts.bootnodes) {
       await this.connect(peerId, multiaddrs)
     }
+
+    this.seaportListener.start()
+    await this.ingestor?.start()
+
+    this.revalidateInterval = setInterval(async () => {
+      await this._validateStaleOrders()
+    }, this.REVALIDATE_INTERVAL)
   }
 
   /**
@@ -176,6 +209,9 @@ export class SeaportGossipNode {
   public async stop() {
     if (!this.running) return
     this.logger.info('Node stopping...')
+    clearInterval(this.revalidateInterval)
+    this.ingestor?.stop()
+    this.seaportListener.stop()
     this._removeListeners()
     await this.libp2p.stop()
     await this.graphql.stop()
@@ -380,7 +416,7 @@ export class SeaportGossipNode {
    * Returns orders from the local db.
    */
   public async getOrders(address: Address, getOpts: GetOrdersOpts = {}) {
-    if (!this.running) await this.start()
+    if (!this.running) throw ErrorNodeNotRunning
     if (!isValidAddress(address)) throw ErrorInvalidAddress
 
     const opts = formatGetOrdersOpts(getOpts)
@@ -406,7 +442,7 @@ export class SeaportGossipNode {
    * Returns criteria items from the local db.
    */
   public async getCriteriaItems(hash: string) {
-    if (!this.running) await this.start()
+    if (!this.running) throw ErrorNodeNotRunning
     if (hash.length !== 66) throw ErrorInvalidCriteriaHash
     hash = hash.toLowerCase()
 
@@ -419,7 +455,7 @@ export class SeaportGossipNode {
    * Adds criteria items to the local db.
    */
   public async addCriteria(hash: string, items: bigint[]) {
-    if (!this.running) await this.start()
+    if (!this.running) throw ErrorNodeNotRunning
     if (hash.length !== 66) throw ErrorInvalidCriteriaHash
     if (items.length === 0) throw ErrorInvalidCriteriaItems
     hash = hash.toLowerCase()
@@ -444,7 +480,7 @@ export class SeaportGossipNode {
     address: Address,
     getOpts: GetOrdersOpts = {}
   ): Promise<number> {
-    if (!this.running) await this.start()
+    if (!this.running) throw ErrorNodeNotRunning
     if (!isValidAddress(address)) throw ErrorInvalidAddress
 
     const opts = formatGetOrdersOpts({ ...getOpts, onlyCount: true })
@@ -457,7 +493,7 @@ export class SeaportGossipNode {
    * If the order is not found in the local db, will ask connected peers for it.
    */
   public async getOrderByHash(hash: string) {
-    if (!this.running) await this.start()
+    if (!this.running) throw ErrorNodeNotRunning
     const order = await this.prisma.order.findUnique({
       where: { hash },
       include: { offer: true, consideration: true },
@@ -469,13 +505,51 @@ export class SeaportGossipNode {
   }
 
   /**
-   * Re-validate an order by its hash.
+   * Validate an order by its hash.
    * @throws {@link ErrorOrderNotFound} if the order is not found
    */
-  public async validateOrderByHash(hash: string) {
+  public async validateOrderByHash(
+    hash: string,
+    opts: { updateRecordInDB: boolean } = { updateRecordInDB: false }
+  ) {
     const order = await this.getOrderByHash(hash)
     if (order === null) throw ErrorOrderNotFound
-    return this.validator.validate(order)
+    return this.validator.validate(order, opts.updateRecordInDB)
+  }
+
+  /**
+   * Re-validate stale orders and update them in the db.
+   */
+  public async _validateStaleOrders() {
+    const block = await this.provider.getBlock('latest')
+    const orderMetadata = await this.prisma.orderMetadata.findMany({
+      take: 10,
+      where: {
+        lastValidatedBlockNumber: {
+          lt: `${block.number - this.REVALIDATE_BLOCK_DISTANCE}`,
+        },
+      },
+      orderBy: { lastValidatedBlockNumber: 'asc' },
+    })
+    for (const metadata of orderMetadata) {
+      const { isValid: isValidBefore, orderHash } = metadata
+      const [isValid] = await this.validateOrderByHash(metadata.orderHash, {
+        updateRecordInDB: true,
+      })
+      if (
+        (isValid === true && !isValidBefore) ||
+        (isValid === false && isValidBefore)
+      ) {
+        const event = {
+          event:
+            isValid === true ? OrderEvent.VALIDATED : OrderEvent.INVALIDATED,
+          orderHash,
+          lastValidatedBlockNumber: block.number.toString(),
+          lastValidatedBlockHash: block.hash,
+        }
+        await this._publishEvent(event)
+      }
+    }
   }
 
   /**
@@ -483,7 +557,7 @@ export class SeaportGossipNode {
    * @returns number of new valid orders added
    */
   public async addOrders(orders: OrderJSON[]) {
-    if (!this.running) await this.start()
+    if (!this.running) throw ErrorNodeNotRunning
     let numAdded = 0
     let numValid = 0
     for (const order of orders) {
@@ -494,18 +568,21 @@ export class SeaportGossipNode {
           order,
           true
         )
+        const { isValid, lastValidatedBlockNumber, lastValidatedBlockHash } =
+          metadata
         if (isAdded === true) numAdded++
         if (metadata.isValid) numValid++
-        if (isAdded && metadata.isValid) {
-          const gossipsubEvent = {
+        if (isAdded && isValid) {
+          const event = {
             event: OrderEvent.NEW,
-            order,
-            isValid: metadata.isValid,
-            lastValidatedBlockNumber: metadata.lastValidatedBlockNumber ?? '0',
+            orderHash: deriveOrderHash(order),
+            orderParameters: order,
+            isValid,
+            lastValidatedBlockNumber: lastValidatedBlockNumber ?? '0',
             lastValidatedBlockHash:
-              metadata.lastValidatedBlockHash ?? ethers.constants.HashZero,
+              lastValidatedBlockHash ?? ethers.constants.HashZero,
           }
-          await this._publishOrder(gossipsubEvent)
+          await this._publishEvent(event)
         }
         this.logger.info(
           `Added ${numAdded} new order${
@@ -522,35 +599,14 @@ export class SeaportGossipNode {
   /**
    * Gossips an order event to the network.
    */
-  private async _publishOrder(event: GossipsubEvent) {
-    const { order } = event
-    const addresses = [...order.offer, ...order.consideration]
-      .map((item) => item.token)
-      .filter((address) => address !== zeroAddress)
-    const uniqueAddresses = [...new Set(addresses)]
-    for (const address of uniqueAddresses) {
-      this.logger.debug(
-        `Sending gossipsub message on topic ${address}: ${JSON.stringify(
-          event
-        )}`
-      )
-      try {
-        await this.gossipsub.publish(address, encodeGossipsubEvent(event))
-      } catch (error: any) {
-        if (error.message === 'PublishError.Duplicate') return
-        this.logger.error(
-          `Error publishing topic ${address} for order ${orderHash(order)}: ${
-            error.message ?? error
-          }`
-        )
-      }
-    }
+  private async _publishEvent(event: GossipsubEvent) {
+    await publishEvent(event, this.gossipsub, this.logger)
   }
 
   /**
    * Subscribe to events for a collection.
    */
-  public subscribe(
+  public gossipsubSubscribe(
     address: Address,
     _onGossipsubEvent?: (gossipsubEvent: GossipsubEvent) => void
   ) {
@@ -561,7 +617,7 @@ export class SeaportGossipNode {
       this._handleGossipsubMessage(address, _onGossipsubEvent).bind(this)
     )
     this.gossipsub.subscribe(address)
-    this.logger.info(`Subscribed to gossipsub for topic ${short(address)}`)
+    this.logger.info(`Subscribed to gossipsub for collection ${short(address)}`)
     return true
   }
 
@@ -629,14 +685,14 @@ export class SeaportGossipNode {
         }
         this.logger.info(
           `Received ${isValid === true ? 'valid' : 'invalid'} order ${short(
-            orderHash(order)
+            deriveOrderHash(order)
           )} from ${short(propagationSource.toString())}, ${
             isAdded ? 'added' : 'not added'
           } to db ${isValid === true && !isAdded ? ' (already existed)' : ''}`
         )
       } catch (error: any) {
         this.logger.error(
-          `Error handling pubsub message for order ${orderHash(
+          `Error handling pubsub message for order ${deriveOrderHash(
             order
           )} (msgId ${short(msgId)}): ${error.message ?? error}`
         )
@@ -648,7 +704,7 @@ export class SeaportGossipNode {
         acceptance
       )
       if (acceptance === MessageAcceptance.Accept) {
-        await this._publishOrder(gossipsubEvent)
+        await this._publishEvent(gossipsubEvent)
       }
     }
   }
@@ -656,8 +712,8 @@ export class SeaportGossipNode {
   /**
    * Unsubscribe from all events for a collection.
    */
-  public unsubscribe(address: Address) {
-    if (!this.running) return
+  public gossipsubUnsubscribe(address: Address) {
+    if (!this.running) throw ErrorNodeNotRunning
     if (!(address in this.gossipsub.getTopics())) {
       this.logger.warn(`No active subscription found for ${address}`)
       return false

@@ -2,7 +2,7 @@ import { BigNumber } from 'ethers'
 
 import { orderJSONToChecksummedAddresses, prefixedStrToBuf } from './helpers.js'
 import {
-  orderHash,
+  deriveOrderHash,
   orderSignatureToFixed65Bytes,
   orderSignatureToVariableBytes,
 } from './order.js'
@@ -21,7 +21,7 @@ export const gossipsubMsgIdFn = (msg: Message) => {
   return Uint8Array.from(
     Buffer.concat([
       prefixedStrToBuf(msg.topic),
-      prefixedStrToBuf(orderHash(order)),
+      prefixedStrToBuf(deriveOrderHash(order)),
     ])
   )
 }

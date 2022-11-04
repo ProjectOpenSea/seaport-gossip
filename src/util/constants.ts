@@ -54,3 +54,10 @@ export const agentVersion = 'seaport-gossip/0.0.1'
 
 /** The list of protocols supported by the client for the `identify` protocol. */
 export const protocols = ['seaport']
+
+/**
+ * Ignore a specific validation error (ERC1155.InvalidToken) from the
+ * OpenSea Shared Storefront Lazy Mint adapter since it doesn't return
+ * true for supportsInterface(IERC1155) */
+export const SHARED_STOREFRONT_LAZY_MINT_ADAPTER =
+  '0xA604060890923Ff400e8c6f5290461A83AEDACec'

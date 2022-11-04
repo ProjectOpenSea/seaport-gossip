@@ -1,3 +1,4 @@
+import { Sema } from 'async-sema'
 import { ethers } from 'ethers'
 
 import type { OrderJSON } from './types.js'
@@ -17,6 +18,9 @@ export const short = <T extends string | null | undefined>(str: T): T => {
  * Returns whether the address is a valid ethereum address.
  */
 export const isValidAddress = (address: string) => {
+  // * is valid, meaning any address
+  if (address === '*') return true
+
   return address[0] === '0' && address[1] === 'x' && address.length === 42
 }
 
@@ -62,4 +66,34 @@ export const orderJSONToChecksummedAddresses = (order: OrderJSON) => {
     item.recipient = ethers.utils.getAddress(item.recipient)
   }
   return order
+}
+
+/** Rate limiter from async-sema with an added AbortSignal */
+/* eslint-disable-next-line @typescript-eslint/naming-convention */
+export function RateLimit(
+  rps: number,
+  {
+    timeUnit = 1000,
+    uniformDistribution = false,
+    signal = undefined,
+  }: {
+    timeUnit?: number
+    uniformDistribution?: boolean
+    signal?: AbortSignal
+  } = {}
+) {
+  const sema = new Sema(uniformDistribution ? 1 : rps)
+  const delay = uniformDistribution ? timeUnit / rps : timeUnit
+
+  let running = true
+  signal?.addEventListener('abort', async () => {
+    running = false
+    await sema.drain()
+  })
+
+  return async function rl() {
+    if (!running) return
+    await sema.acquire()
+    setTimeout(() => sema.release(), delay)
+  }
 }
