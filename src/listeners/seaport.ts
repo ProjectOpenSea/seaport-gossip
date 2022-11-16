@@ -3,6 +3,7 @@ import { ethers } from 'ethers'
 import ISeaport from '../contract-abi/Seaport.json' assert { type: 'json' }
 import { short } from '../index.js'
 import { publishEvent } from '../util/gossipsub.js'
+import { emptyOrderJSON } from '../util/serialize.js'
 import { ItemType, OrderEvent, SeaportEvent } from '../util/types.js'
 
 import type { SeaportGossipNode } from '../node.js'
@@ -158,6 +159,7 @@ export class SeaportListener {
       const event = {
         event: OrderEvent.FULFILLED,
         orderHash,
+        order,
         blockNumber: block.number.toString(),
         blockHash: block.hash,
       }
@@ -190,8 +192,9 @@ export class SeaportListener {
     const event = {
       event: OrderEvent.CANCELLED,
       orderHash,
-      lastValidatedBlockNumber: block.number.toString(),
-      lastValidatedBlockHash: block.hash,
+      order,
+      blockNumber: block.number.toString(),
+      blockHash: block.hash,
     }
     await this._publishEvent(event)
   }
@@ -223,8 +226,9 @@ export class SeaportListener {
     const event = {
       event: OrderEvent.VALIDATED,
       orderHash,
-      lastValidatedBlockNumber: lastValidatedBlockNumber.toString(),
-      lastValidatedBlockHash,
+      order,
+      blockNumber: lastValidatedBlockNumber.toString(),
+      blockHash: lastValidatedBlockHash,
     }
     await this._publishEvent(event)
   }
@@ -232,9 +236,10 @@ export class SeaportListener {
   /**
    * Handle CounterIncremented event from the Seaport contract.
    */
-  private async _onCounterIncrementedEvent(
+  public async _onCounterIncrementedEvent(
     newCounter: number,
-    offerer: Address
+    offerer: Address,
+    publishGossipsubEvent = true
   ) {
     const orders = await this.prisma.order.findMany({
       where: { offerer, counter: { lt: newCounter } },
@@ -257,14 +262,17 @@ export class SeaportListener {
       })
     }
 
-    const event = {
-      event: OrderEvent.COUNTER_INCREMENTED,
-      offerer,
-      newCounter,
-      blockNumber: block.number.toString(),
-      blockHash: block.hash,
+    if (publishGossipsubEvent) {
+      const event = {
+        event: OrderEvent.COUNTER_INCREMENTED,
+        offerer,
+        orderHash: ethers.constants.HashZero,
+        order: { ...emptyOrderJSON, offerer, counter: newCounter },
+        blockNumber: block.number.toString(),
+        blockHash: block.hash,
+      }
+      await this._publishEvent(event)
     }
-    await this._publishEvent(event)
   }
 
   /**

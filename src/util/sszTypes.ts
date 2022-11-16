@@ -72,10 +72,10 @@ export const Orders = new ContainerType({
 
 export const GossipsubEvent = new ContainerType({
   event: Uint8,
-  isValid: Boolean,
-  lastValidatedBlockNumber: UintNum64,
-  lastValidatedBlockHash: Root,
+  orderHash: Root,
   order: Order,
+  blockNumber: UintNum64,
+  blockHash: Root,
 })
 
 export const OrderFilter = new ContainerType({

@@ -48,7 +48,10 @@ export const simulateOrderFulfillment = async (
 ) => {
   return prisma.orderMetadata.update({
     where: { orderHash },
-    data: { lastFulfilledAt: new Date(), lastFulfilledPrice: price },
+    data: {
+      lastFulfilledAt: Math.round(Date.now() / 1000).toString(),
+      lastFulfilledPrice: price,
+    },
   })
 }
 

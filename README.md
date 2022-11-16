@@ -1,6 +1,6 @@
 # seaport-gossip
 
-![CI][github-actions-badge]
+[![CI][github-actions-badge]][github-actions-link]
 
 A peer-to-peer network for sharing [Seaport][seaport-repo] orders.
 
@@ -153,12 +153,14 @@ You can query for orders, add new orders, and subscribe to events.
   ) {
     chainId
     offer {
-      tokenAddress
+      token
+      identifierOrCriteria 
       startAmount
       endAmount
     }
     consideration {
-      tokenAddress
+      token
+      identifierOrCriteria 
       startAmount
       endAmount
     }
@@ -257,3 +259,4 @@ You can get stats for your node via the `stats` query.
 [api-docs]: ./docs
 [libp2p-website]: https://libp2p.io/
 [github-actions-badge]: https://github.com/ProjectOpenSea/seaport-gossip/actions/workflows/test.yml/badge.svg?branch=main
+[github-actions-link]: https://github.com/ProjectOpenSea/seaport-gossip/actions

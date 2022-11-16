@@ -1,5 +1,5 @@
 export * from './convert.js'
-export * from './criteria.js'
+export * from './merkleTree.js'
 export * from './helpers.js'
 export * from './log.js'
 export * from './metrics.js'

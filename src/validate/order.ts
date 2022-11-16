@@ -26,6 +26,7 @@ interface OrderValidationOpts {
   web3Provider: ethers.providers.JsonRpcProvider
   logger: winston.Logger
   validateOpenSeaFeeRecipient: boolean
+  revalidateBlockDistance: number
 }
 
 export class OrderValidator {
@@ -35,6 +36,7 @@ export class OrderValidator {
   private provider: ethers.providers.JsonRpcProvider
   private validator: SeaportOrderValidator
   private validationConfiguration: ValidationConfigurationStruct
+  private REVALIDATE_BLOCK_DISTANCE: number
 
   constructor(opts: OrderValidationOpts) {
     this.prisma = opts.prisma
@@ -56,6 +58,7 @@ export class OrderValidator {
       shortOrderDuration: 30 * 60, // 30 minutes
       distantOrderExpiration: 60 * 60 * 24 * 7 * 26, // 26 weeks
     }
+    this.REVALIDATE_BLOCK_DISTANCE = opts.revalidateBlockDistance
   }
 
   /**
@@ -126,10 +129,29 @@ export class OrderValidator {
     )
 
     if (updateRecordInDB) {
-      await this.prisma.orderMetadata.update({
-        where: { orderHash: hash },
-        data: { isValid },
-      })
+      if (
+        errorsAndWarnings.errors.includes('Order fully filled') === true ||
+        errorsAndWarnings.errors.includes('Order cancelled') === true
+      ) {
+        const metadata = await this.prisma.orderMetadata.findFirst({
+          where: { orderHash: hash },
+        })
+        if (
+          metadata !== null &&
+          Number(metadata.lastValidatedBlockNumber) <
+            lastBlockNumber - this.REVALIDATE_BLOCK_DISTANCE
+        ) {
+          this.logger.debug(
+            `Deleting stale order ${hash} for being fully filled or cancelled`
+          )
+          await this.prisma.order.delete({ where: { hash } })
+        }
+      } else {
+        await this.prisma.orderMetadata.update({
+          where: { orderHash: hash },
+          data: { isValid },
+        })
+      }
     }
 
     return [

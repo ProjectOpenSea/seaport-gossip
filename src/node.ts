@@ -38,7 +38,11 @@ import { publishEvent } from './util/gossipsub.js'
 import { isValidAddress, short } from './util/helpers.js'
 import { createWinstonLogger } from './util/log.js'
 import { deriveOrderHash } from './util/order.js'
-import { decodeGossipsubEvent, gossipsubMsgIdFn } from './util/serialize.js'
+import {
+  decodeGossipsubEvent,
+  emptyOrderJSON,
+  gossipsubMsgIdFn,
+} from './util/serialize.js'
 import { OrderEvent, seaportGossipNodeDefaultOpts } from './util/types.js'
 import { OrderValidator } from './validate/index.js'
 
@@ -56,6 +60,7 @@ import type { PeerInfo } from '@libp2p/interface-peer-info'
 import type { Multiaddr } from '@multiformats/multiaddr'
 import type { Libp2p, Libp2pEvents } from 'libp2p'
 import type winston from 'winston'
+import { exportToProtobuf } from '@libp2p/peer-id-factory'
 
 /**
  * SeaportGossipNode is a p2p client for sharing Seaport orders.
@@ -108,6 +113,7 @@ export class SeaportGossipNode {
       web3Provider: this.provider,
       logger: this.logger,
       validateOpenSeaFeeRecipient: true,
+      revalidateBlockDistance: this.REVALIDATE_BLOCK_DISTANCE,
     })
     this.seaportListener = new SeaportListener({
       node: this,
@@ -183,8 +189,8 @@ export class SeaportGossipNode {
     )
     const displayAddrs = this.libp2p
       .getMultiaddrs()
-      .map((a) => `                             ${a.toString()}`)
-      .join(',\n')
+      .map((a) => `\t\t\t\t${a.toString()}`)
+      .join('\n')
     this.logger.info(`Advertising the following addresses:\n${displayAddrs}`)
 
     for (const address of this.opts.collectionAddresses) {
@@ -201,6 +207,11 @@ export class SeaportGossipNode {
     this.revalidateInterval = setInterval(async () => {
       await this._validateStaleOrders()
     }, this.REVALIDATE_INTERVAL)
+
+    const orderCount = await this.prisma.order.count()
+    this.logger.info(
+      `${orderCount} order${orderCount === 1 ? '' : 's'} in database`
+    )
   }
 
   /**
@@ -531,6 +542,12 @@ export class SeaportGossipNode {
       },
       orderBy: { lastValidatedBlockNumber: 'asc' },
     })
+    if (orderMetadata.length === 0) return
+    this.logger.debug(
+      `Re-validating ${orderMetadata.length} stale orders, oldest from ${
+        block.number - Number(orderMetadata[0].lastValidatedBlockNumber)
+      } blocks ago`
+    )
     for (const metadata of orderMetadata) {
       const { isValid: isValidBefore, orderHash } = metadata
       const [isValid] = await this.validateOrderByHash(metadata.orderHash, {
@@ -540,12 +557,21 @@ export class SeaportGossipNode {
         (isValid === true && !isValidBefore) ||
         (isValid === false && isValidBefore)
       ) {
+        const dbOrder = await this.prisma.order.findFirst({
+          where: { hash: orderHash },
+          include: {
+            offer: true,
+            consideration: true,
+          },
+        })
+        const order = dbOrder !== null ? orderToJSON(dbOrder) : emptyOrderJSON
         const event = {
           event:
             isValid === true ? OrderEvent.VALIDATED : OrderEvent.INVALIDATED,
           orderHash,
-          lastValidatedBlockNumber: block.number.toString(),
-          lastValidatedBlockHash: block.hash,
+          order,
+          blockNumber: block.number.toString(),
+          blockHash: block.hash,
         }
         await this._publishEvent(event)
       }
@@ -576,11 +602,9 @@ export class SeaportGossipNode {
           const event = {
             event: OrderEvent.NEW,
             orderHash: deriveOrderHash(order),
-            orderParameters: order,
-            isValid,
-            lastValidatedBlockNumber: lastValidatedBlockNumber ?? '0',
-            lastValidatedBlockHash:
-              lastValidatedBlockHash ?? ethers.constants.HashZero,
+            order,
+            blockNumber: lastValidatedBlockNumber ?? '0',
+            blockHash: lastValidatedBlockHash ?? ethers.constants.HashZero,
           }
           await this._publishEvent(event)
         }
@@ -628,15 +652,15 @@ export class SeaportGossipNode {
     address: Address,
     _onGossipsubEvent?: (gossipsubEvent: GossipsubEvent) => void
   ) {
-    return async (event: CustomEvent<GossipsubMessage>) => {
-      const { msg, msgId, propagationSource } = event.detail
+    return async (gossipsubMessage: CustomEvent<GossipsubMessage>) => {
+      const { msg, msgId, propagationSource } = gossipsubMessage.detail
       const { data, topic } = msg
 
       if (topic !== address) return
 
-      let gossipsubEvent
+      let event
       try {
-        gossipsubEvent = decodeGossipsubEvent(data)
+        event = decodeGossipsubEvent(data)
       } catch (error: any) {
         this.logger.error(
           `Error formatting gossipsub message to event: ${
@@ -645,66 +669,92 @@ export class SeaportGossipNode {
         )
       }
 
-      if (gossipsubEvent === undefined) {
+      if (event === undefined) {
         this.logger.error('No gossipsubEvent from gossipsub:message')
         return
       }
 
       this.logger.debug(
-        `Received gossipsub on topic ${topic}: ${JSON.stringify(
-          gossipsubEvent
-        )}`
+        `Received gossipsub on topic ${topic}: ${JSON.stringify(event)}`
       )
 
-      if (_onGossipsubEvent !== undefined) _onGossipsubEvent(gossipsubEvent)
+      if (_onGossipsubEvent !== undefined) {
+        _onGossipsubEvent(event)
+      }
 
       // Parse and validate order
-      const { order } = gossipsubEvent
+      const { order } = event
+      let { event: orderEvent } = event
       let acceptance
-      try {
-        const [isAdded, metadata] = await addOrder(
-          this.prisma,
-          this.validator,
-          order
+
+      if (orderEvent === OrderEvent.COUNTER_INCREMENTED) {
+        // TODO: Accept message if counter is equal to order.counter on blockHash,
+        //       otherwise reject
+        acceptance = MessageAcceptance.Accept
+        await this.seaportListener._onCounterIncrementedEvent(
+          order.counter,
+          order.offerer,
+          false
         )
-        const { isValid } = metadata
-        if (gossipsubEvent.event === OrderEvent.INVALIDATED) {
-          if (isValid === true) {
-            // TODO accept but don't rebroadcast if it is invalid on the
-            // lastValidatedBlockHash but now valid
-          }
-          acceptance =
-            isValid === true
-              ? MessageAcceptance.Reject
-              : MessageAcceptance.Accept
-        } else {
-          acceptance =
-            isValid === true
-              ? MessageAcceptance.Accept
-              : MessageAcceptance.Reject
-        }
-        this.logger.info(
-          `Received ${isValid === true ? 'valid' : 'invalid'} order ${short(
-            deriveOrderHash(order)
-          )} from ${short(propagationSource.toString())}, ${
-            isAdded ? 'added' : 'not added'
-          } to db ${isValid === true && !isAdded ? ' (already existed)' : ''}`
-        )
-      } catch (error: any) {
-        this.logger.error(
-          `Error handling pubsub message for order ${deriveOrderHash(
+      } else {
+        // Try adding order to db
+        try {
+          const [isAdded, metadata] = await addOrder(
+            this.prisma,
+            this.validator,
             order
-          )} (msgId ${short(msgId)}): ${error.message ?? error}`
-        )
-        acceptance = MessageAcceptance.Reject
+          )
+          const { isValid } = metadata
+          if (
+            orderEvent === OrderEvent.INVALIDATED ||
+            orderEvent === OrderEvent.CANCELLED
+          ) {
+            if (isValid === true) {
+              // If the order is now valid, check that it was invalid
+              // on the INVALIDATED/CANCELLED event for message acceptance
+              acceptance = MessageAcceptance.Accept
+              // TODO: set to MessageAcceptance.Reject if isValid on gossiped blockHash,
+              //       and rebroadcast as OrderEvent.VALIDATED
+              orderEvent = OrderEvent.VALIDATED
+            } else {
+              acceptance = MessageAcceptance.Accept
+            }
+          } else if (orderEvent === OrderEvent.FULFILLED) {
+            // TODO: accept if there was indeed a fulfilled event at the blockHash
+            acceptance = MessageAcceptance.Accept
+          } else {
+            acceptance =
+              isValid === true
+                ? MessageAcceptance.Accept
+                : MessageAcceptance.Reject
+          }
+          this.logger.info(
+            `Received ${isValid === true ? 'valid' : 'invalid'} order ${short(
+              deriveOrderHash(order)
+            )} from ${short(propagationSource.toString())}, event ${
+              OrderEvent[orderEvent]
+            }, ${isAdded ? 'added' : 'not added'} to db ${
+              isValid === true && !isAdded ? ' (already existed)' : ''
+            }`
+          )
+        } catch (error: any) {
+          this.logger.error(
+            `Error handling pubsub message for order ${deriveOrderHash(
+              order
+            )} (msgId ${short(msgId)}): ${error.message ?? error}`
+          )
+          acceptance = MessageAcceptance.Reject
+        }
       }
+
       this.gossipsub.reportMessageValidationResult(
         msgId,
         propagationSource,
         acceptance
       )
+
       if (acceptance === MessageAcceptance.Accept) {
-        await this._publishEvent(gossipsubEvent)
+        await this._publishEvent(event)
       }
     }
   }

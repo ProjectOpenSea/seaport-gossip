@@ -3,13 +3,14 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function main() {
+  /*
   const order1 = await prisma.order.upsert({
     where: {
-      hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      hash: '0xa3c92e0a25acabf6f3a11722e6d2013a11ff2bf9832c5c7c3e1cd7ea2fe2d06f',
     },
     update: {},
     create: {
-      hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      hash: '0xa3c92e0a25acabf6f3a11722e6d2013a11ff2bf9832c5c7c3e1cd7ea2fe2d06f',
       offer: {
         create: {
           itemType: 1,
@@ -134,6 +135,7 @@ async function main() {
   })
 
   console.log({ order1, order2 })
+  */
 }
 
 main()

@@ -50,7 +50,7 @@ CREATE TABLE "OrderMetadata" (
     "isValid" BOOLEAN NOT NULL,
     "isAuction" BOOLEAN NOT NULL,
     "isFullyFulfilled" BOOLEAN NOT NULL,
-    "lastFulfilledAt" DATETIME,
+    "lastFulfilledAt" TEXT,
     "lastFulfilledPrice" TEXT,
     "isPinned" BOOLEAN NOT NULL DEFAULT false,
     "isRemoved" BOOLEAN NOT NULL DEFAULT false,

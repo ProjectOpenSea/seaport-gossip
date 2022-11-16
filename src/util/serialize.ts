@@ -26,6 +26,9 @@ export const gossipsubMsgIdFn = (msg: Message) => {
   )
 }
 
+const defaultOrderValues = sszOrder.defaultValue()
+
+/*
 const defaultAdvancedOrderValues = {
   additionalRecipients: [],
   denominator: 0,
@@ -33,6 +36,7 @@ const defaultAdvancedOrderValues = {
   extraData:
     '0x0000000000000000000000000000000000000000000000000000000000000000',
 }
+*/
 
 const defaultAdvancedOrderNativeValues = {
   additionalRecipients: [],
@@ -44,20 +48,20 @@ const defaultAdvancedOrderNativeValues = {
 export const encodeGossipsubEvent = (event: GossipsubEvent) =>
   sszGossipsubEvent.serialize({
     event: event.event,
+    orderHash: prefixedStrToBuf(event.orderHash),
     order: sszOrder.fromJson({
+      ...sszOrder.toJson(defaultOrderValues),
       ...event.order,
-      ...defaultAdvancedOrderValues,
       signature: orderSignatureToFixed65Bytes(event.order.signature),
     }),
-    isValid: event.isValid,
-    lastValidatedBlockHash: prefixedStrToBuf(event.lastValidatedBlockHash),
-    lastValidatedBlockNumber: Number(event.lastValidatedBlockNumber),
+    blockHash: prefixedStrToBuf(event.blockHash),
+    blockNumber: Number(event.blockNumber),
   })
 
 const toOrderJSON = (order: ValueOf<typeof sszOrder>): OrderJSON => {
   const json = sszOrder.toJson({
-    ...order,
     ...defaultAdvancedOrderNativeValues,
+    ...order,
   }) as unknown as OrderJSON
 
   json.signature = orderSignatureToVariableBytes(json.signature)
@@ -91,17 +95,15 @@ const toOrderJSON = (order: ValueOf<typeof sszOrder>): OrderJSON => {
   return json
 }
 
+export const emptyOrderJSON = toOrderJSON(defaultOrderValues)
+
 export const decodeGossipsubEvent = (data: Uint8Array): GossipsubEvent => {
   const event = sszGossipsubEvent.deserialize(data)
   return {
     event: event.event,
+    orderHash: `0x${Buffer.from(event.orderHash).toString('hex')}`,
     order: toOrderJSON(event.order),
-    isValid: event.isValid,
-    lastValidatedBlockHash: `0x${Buffer.from(
-      event.lastValidatedBlockHash
-    ).toString('hex')}`,
-    lastValidatedBlockNumber: `0x${event.lastValidatedBlockNumber.toString(
-      16
-    )}`,
+    blockHash: `0x${Buffer.from(event.blockHash).toString('hex')}`,
+    blockNumber: `0x${event.blockNumber.toString(16)}`,
   }
 }

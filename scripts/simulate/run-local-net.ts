@@ -24,7 +24,7 @@ import type { PeerId } from '@libp2p/interface-peer-id'
 import type { Multiaddr } from '@multiformats/multiaddr'
 
 const opts: SeaportGossipNodeOpts = {
-  web3Provider: new MockProvider('mainnet'),
+  web3Provider: new MockProvider('mainnet') as any,
   collectionAddresses: [
     '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
     // '0x3F53082981815Ed8142384EDB1311025cA750Ef1',

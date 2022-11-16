@@ -1,13 +1,15 @@
+import { peerIdFromString } from '@libp2p/peer-id'
 import { Order } from '@prisma/client'
 
 import { DEFAULT_SEAPORT_ADDRESS } from './constants.js'
 import { Color } from './log.js'
 
 import type { PeerId } from '@libp2p/interface-peer-id'
-import type { Multiaddr } from '@multiformats/multiaddr'
+import { multiaddr, Multiaddr } from '@multiformats/multiaddr'
 import type { ConsiderationItem, OfferItem } from '@prisma/client'
 import type { BigNumber, ethers } from 'ethers'
 import type winston from 'winston'
+import { createFromPrivKey, createFromProtobuf } from '@libp2p/peer-id-factory'
 
 /**
  * Options for initializing a node.
@@ -180,12 +182,32 @@ export interface SeaportGossipNodeOpts {
  */
 export const seaportGossipNodeDefaultOpts = {
   web3Provider: process.env.WEB3_PROVIDER ?? '',
-  datadir: './datadirs/datadir',
-  peerId: null,
+  datadir: process.env.SEAPORT_GOSSIP_DATADIR ?? './datadirs/datadir',
+  peerId:
+    process.env.SEAPORT_GOSSIP_PEER_ID_PROTOBUF !== undefined
+      ? await createFromProtobuf(
+          Buffer.from(process.env.SEAPORT_GOSSIP_PEER_ID_PROTOBUF, 'hex')
+        )
+      : null,
   hostname: '0.0.0.0',
-  port: 8998,
-  graphqlPort: 4000,
-  bootnodes: [],
+  port:
+    process.env.SEAPORT_GOSSIP_PORT !== undefined
+      ? Number(process.env.SEAPORT_GOSSIP_PORT)
+      : 8998,
+  graphqlPort:
+    process.env.SEAPORT_GOSSIP_GRAPHQL_PORT !== undefined
+      ? Number(process.env.SEAPORT_GOSSIP_GRAPHQL_PORT)
+      : 4000,
+  bootnodes:
+    process.env.SEAPORT_GOSSIP_BOOTNODES !== undefined
+      ? process.env.SEAPORT_GOSSIP_BOOTNODES.split(',')
+          .map((b) => b.split('/p2p/').reverse())
+          .map((b: any) => {
+            b[0] = peerIdFromString(b[0])
+            b[1] = [multiaddr(b[1])]
+            return b as [PeerId, Multiaddr[]]
+          })
+      : [],
   minConnections: 5,
   maxConnections: 15,
   collectionAddresses: process.env.COLLECTION_ADDRESSES?.split(',') ?? [],
@@ -365,8 +387,8 @@ export interface OrderJSON {
 
 export interface GossipsubEvent {
   event: OrderEvent
+  orderHash: string
   order: OrderJSON
-  isValid: boolean
-  lastValidatedBlockNumber: string
-  lastValidatedBlockHash: string
+  blockNumber: string
+  blockHash: string
 }
