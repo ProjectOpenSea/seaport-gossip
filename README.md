@@ -179,7 +179,7 @@ You can query for orders, and soon add new orders and subscribe to events.
 
 #### Adding orders
 
-_To be added_
+_To be added to the GraphQL API, for now the API can be used via node.addOrders()_
 
 ```graphql
 mutation AddOrders {
@@ -208,7 +208,7 @@ mutation AddOrders {
 
 #### Subscribing to events
 
-_To be added_
+_To be added to the GraphQL API, for now the API can be used via node.subscribe()_
 
 You can subscribe to order events via a subscription.
 
