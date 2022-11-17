@@ -29,17 +29,21 @@ import type { PrismaClient } from '@prisma/client'
 
 chai.use(chaiAsPromised)
 
-describe('SeaportGossipNode', () => {
-  const opts = { web3Provider: new MockProvider('mainnet'), logLevel: 'off' }
+describe('Orders', () => {
+  const opts = {
+    web3Provider: new MockProvider('mainnet') as any,
+    logLevel: 'off',
+  }
   const node = new SeaportGossipNode(opts)
   const prisma: PrismaClient = (node as any).prisma
 
-  before(async () => {
-    await truncateTables(node)
+  beforeEach(async () => {
+    await node.start()
   })
 
   afterEach(async () => {
     await truncateTables(node)
+    await node.stop()
   })
 
   it('should add and get orders', async () => {
@@ -75,12 +79,11 @@ describe('SeaportGossipNode', () => {
     orders = await node.getOrders(zeroAddress, { side: Side.SELL })
     expect(orders.length).to.eq(2)
     orders = await node.getOrders(zeroAddress, { side: Side.BUY })
-    expect(orders.length).to.eq(6)
+    expect(orders.length).to.eq(5)
 
     await expect(node.getOrders('0xinvalid')).to.eventually.be.rejectedWith(
       ErrorInvalidAddress
     )
-    await node.stop()
   })
 
   it('should not add invalid orders', async () => {
@@ -91,13 +94,11 @@ describe('SeaportGossipNode', () => {
       '0x3F53082981815Ed8142384EDB1311025cA750Ef1'
     )
     expect(orders.length).to.eq(0)
-    await node.stop()
   })
 
   it('should return node stats', async () => {
     const stats = await node.stats()
     expect(stats).to.deep.eq({})
-    await node.stop()
   })
 
   it('should get orders with count and offset options', async () => {
@@ -112,7 +113,6 @@ describe('SeaportGossipNode', () => {
     const offsetOrders = await node.getOrders(contractAddr, offsetGetOpts)
 
     expect(orders.slice(1)).to.deep.eq(offsetOrders)
-    await node.stop()
   })
 
   it('should get orders with sort and filter options', async () => {
@@ -355,19 +355,5 @@ describe('SeaportGossipNode', () => {
         )
       )
     }
-
-    await node.stop()
-  })
-
-  it('should get orders from another node via libp2p', async () => {
-    /*
-    const node1 = node()
-    const node2 = node()
-    node2.addOrders(orders)
-    node1.connect(node2.peerId, node2.multiaddr)
-    node1.getOrdersFromPeer(node2, { filter, sort, limit })
-    expect(node1.getOrders(query).to.deep.eq(node2.getOrders(query))
-    expect(node1.getOrderCountFromPeer(node2, query)).to.deep.eq(node2.getOrderCount(query))
-    */
   })
 })

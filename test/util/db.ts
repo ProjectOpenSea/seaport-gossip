@@ -41,6 +41,7 @@ export const randomOrder = async (prisma: PrismaClient) => {
 /**
  * Sets a recent fulfillment for specified order
  */
+let nextFulfilledBlock = 0
 export const simulateOrderFulfillment = async (
   prisma: PrismaClient,
   orderHash: string,
@@ -49,7 +50,7 @@ export const simulateOrderFulfillment = async (
   return prisma.orderMetadata.update({
     where: { orderHash },
     data: {
-      lastFulfilledAt: Math.round(Date.now() / 1000).toString(),
+      lastFulfilledAt: (nextFulfilledBlock++).toString(),
       lastFulfilledPrice: price,
     },
   })

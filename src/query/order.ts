@@ -19,9 +19,11 @@ import type {
   OrderFilterOpts,
   OrderJSON,
   OrderWithItems,
+  SeaportGossipNodeOpts,
 } from '../util/types.js'
 import type { OrderValidator } from '../validate/order.js'
 import type { OrderMetadata, Prisma, PrismaClient } from '@prisma/client'
+import type winston from 'winston'
 
 export interface GetOrdersOpts {
   /** Whether to return BUY or SELL offers. Default: SELL */
@@ -357,4 +359,30 @@ export const addOrder = async (
   if (orderMetadata === null) throw new Error('order metadata missing')
 
   return [!orderAlreadyExistsInDB, orderMetadata]
+}
+
+/**
+ * Returns true if order exceeds maxOrders or maxOrdersPerOfferer
+ */
+export const exceedsMaxOrderLimits = async (
+  order: OrderJSON,
+  prisma: PrismaClient,
+  logger: winston.Logger,
+  opts: Required<SeaportGossipNodeOpts>
+): Promise<boolean> => {
+  const orderCount = await prisma.order.count()
+  if (orderCount + 1 > opts.maxOrders) {
+    logger.info(`Exceeded max ${opts.maxOrders} orders in db`)
+    return true
+  }
+  const orderCountByOfferer = await prisma.order.count({
+    where: { offerer: order.offerer },
+  })
+  if (orderCountByOfferer + 1 > opts.maxOrdersPerOfferer) {
+    logger.info(
+      `Exceeded max ${opts.maxOrdersPerOfferer} orders per offerer for ${order.offerer} in db`
+    )
+    return true
+  }
+  return false
 }

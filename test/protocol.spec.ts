@@ -22,7 +22,7 @@ describe('Protocol', () => {
   let node1Bootnode: [PeerId, Multiaddr[]]
 
   const opts = {
-    web3Provider: new MockProvider('mainnet'),
+    web3Provider: new MockProvider('mainnet') as any,
     logLevel: 'off',
   }
 

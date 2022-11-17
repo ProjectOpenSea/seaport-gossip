@@ -12,7 +12,7 @@ chai.use(chaiAsPromised)
 describe('Ingestor', () => {
   const WILDCARD_COLLECTION_ADDRESS = '*'
   const opts = {
-    web3Provider: new MockProvider('mainnet'),
+    web3Provider: new MockProvider('mainnet') as any,
     logLevel: 'warn',
     ingestOpenSeaOrders: true,
     collectionAddresses: [WILDCARD_COLLECTION_ADDRESS],

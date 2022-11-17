@@ -23,7 +23,7 @@ describe('Gossipsub', () => {
   const validOrder = validBasicOrders[0]
 
   const opts = {
-    web3Provider: new MockProvider('mainnet'),
+    web3Provider: new MockProvider('mainnet') as any,
     collectionAddresses: [validOrder.offer[0].token],
     logLevel: 'off',
   }

@@ -34,9 +34,10 @@ export class MerkleTree {
 
   public verifyProof(
     proof: string[] | Buffer[],
-    targetNode: string | Buffer,
+    identifier: string,
     root?: string | Buffer
   ) {
+    const targetNode = hashIdentifier(identifier)
     return this.tree.verify(proof, targetNode, root ?? this.tree.getRoot())
   }
 }

@@ -19,7 +19,8 @@ describe('Validate', () => {
 
   before(() => {
     node = new SeaportGossipNode({
-      web3Provider: process.env.WEB3_PROVIDER ?? new MockProvider('mainnet'),
+      web3Provider:
+        process.env.WEB3_PROVIDER ?? (new MockProvider('mainnet') as any),
       ...opts,
     })
   })

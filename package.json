@@ -23,7 +23,7 @@
     "seaport-gossip": "./dist/bin/cli.js"
   },
   "scripts": {
-    "postinstall": "yarn fixStreamJSTypeImports",
+    "postinstall": "yarn fixStreamJSTypeImports && yarn build",
     "fixStreamJSTypeImports": "npx json -I -f node_modules/@opensea/stream-js/package.json -e \"this.exports.types='./dist/index.d.ts'\" && npx replace \"client'\" \"client.js'\" node_modules/@opensea/stream-js/dist/index.d.ts && npx replace \"types'\" \"types.js'\" node_modules/@opensea/stream-js/dist/index.d.ts",
     "build": "yarn prisma:generate && yarn build:ts",
     "build:ts": "tsc -p tsconfig.prod.json",

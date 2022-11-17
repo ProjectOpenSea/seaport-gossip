@@ -32,27 +32,25 @@ Seaport Gossip uses [libp2p][libp2p-website] with the following configuration:
 
 ## Install
 
-To add to your project:
-
-```bash
-yarn add seaport-gossip
-```
-
-or
-
-```bash
-npm i --save seaport-gossip
-```
-
-To install dependencies for development:
+To install:
 
 ```bash
 git clone https://github.com/ProjectOpenSea/seaport-gossip
 cd seaport-gossip
-yarn && yarn build
+yarn
 ```
 
 ## Run
+
+### CLI
+
+Ensure you set the proper environment variables:
+
+`source example.env`
+
+Start a node with the GraphQL server enabled:
+
+`seaport-gossip start`
 
 ### JavaScript / TypeScript
 
@@ -86,16 +84,6 @@ node.subscribe('0xabc', (event) =>
 )
 ```
 
-### CLI
-
-Ensure you set the proper environment variables:
-
-`source example.env`
-
-Start a node with the GraphQL server enabled:
-
-`seaport-gossip start`
-
 ## API
 
 ### Node
@@ -117,6 +105,8 @@ Start a node with the GraphQL server enabled:
 #### `node.addOrders(orders: Order[]): Promise<number>`
 
 ### Criteria
+
+_Criteria functionality is still under active development_
 
 #### `node.getCriteria(hash: string): Promise<CriteriaTokenIds | null>`
 
@@ -142,7 +132,7 @@ For more thorough documentation see the [API docs][api-docs].
 
 The GraphQL server default starts at http://localhost:4000/graphql
 
-You can query for orders, add new orders, and subscribe to events.
+You can query for orders, and soon add new orders and subscribe to events.
 
 #### Querying orders
 
@@ -154,13 +144,13 @@ You can query for orders, add new orders, and subscribe to events.
     chainId
     offer {
       token
-      identifierOrCriteria 
+      identifierOrCriteria
       startAmount
       endAmount
     }
     consideration {
       token
-      identifierOrCriteria 
+      identifierOrCriteria
       startAmount
       endAmount
     }
@@ -189,6 +179,8 @@ You can query for orders, add new orders, and subscribe to events.
 
 #### Adding orders
 
+_To be added_
+
 ```graphql
 mutation AddOrders {
     addOrders(
@@ -203,6 +195,7 @@ mutation AddOrders {
                 hash
             }
             isNew
+            isValid
         }
         rejected {
             hash
@@ -214,6 +207,8 @@ mutation AddOrders {
 ```
 
 #### Subscribing to events
+
+_To be added_
 
 You can subscribe to order events via a subscription.
 
@@ -230,6 +225,8 @@ subscription {
 ```
 
 #### Stats
+
+_To be added_
 
 You can get stats for your node via the `stats` query.
 

@@ -25,7 +25,12 @@ import {
   orderHashesEncode,
   ordersDecode,
 } from './protocol.js'
-import { addOrder, formatGetOrdersOpts, queryOrders } from './query/order.js'
+import {
+  addOrder,
+  exceedsMaxOrderLimits,
+  formatGetOrdersOpts,
+  queryOrders,
+} from './query/order.js'
 import { orderToJSON } from './util/convert.js'
 import {
   ErrorInvalidAddress,
@@ -587,6 +592,15 @@ export class SeaportGossipNode {
     let numValid = 0
     for (const order of orders) {
       try {
+        if (
+          await exceedsMaxOrderLimits(
+            order,
+            this.prisma,
+            this.logger,
+            this.opts
+          )
+        )
+          return numValid
         const [isAdded, metadata] = await addOrder(
           this.prisma,
           this.validator,
@@ -698,6 +712,15 @@ export class SeaportGossipNode {
       } else {
         // Try adding order to db
         try {
+          if (
+            await exceedsMaxOrderLimits(
+              order,
+              this.prisma,
+              this.logger,
+              this.opts
+            )
+          )
+            return
           const [isAdded, metadata] = await addOrder(
             this.prisma,
             this.validator,

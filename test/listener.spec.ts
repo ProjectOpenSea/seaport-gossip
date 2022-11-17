@@ -5,7 +5,6 @@ import { setTimeout } from 'timers/promises'
 import { SeaportGossipNode, Side } from '../dist/index.js'
 
 import { truncateTables } from './util/db.js'
-import { MockProvider } from './util/provider.js'
 
 chai.use(chaiAsPromised)
 

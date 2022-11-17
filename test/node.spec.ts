@@ -8,7 +8,10 @@ import { MockProvider } from './util/provider.js'
 chai.use(chaiAsPromised)
 
 describe('SeaportGossipNode', () => {
-  const opts = { web3Provider: new MockProvider('mainnet'), logLevel: 'warn' }
+  const opts = {
+    web3Provider: new MockProvider('mainnet') as any,
+    logLevel: 'warn',
+  }
   const node = new SeaportGossipNode(opts)
 
   it('should start and stop successfully', async () => {
