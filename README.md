@@ -58,7 +58,9 @@ Ensure you set the environment variables:
 
 Start a node with the GraphQL server enabled:
 
-`seaport-gossip start`
+`yarn start`
+
+_Server-side bootstrap nodes are coming soon. For now, you can try testing between several nodes on your own local network. One node can be attached to the OpenSea API to ingest orders, and the others can listen to the gossiped events._
 
 ### JavaScript / TypeScript
 
