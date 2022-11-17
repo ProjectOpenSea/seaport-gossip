@@ -1,6 +1,12 @@
-# seaport-gossip
+![Seaport Gossip](img/seaport-gossip-banner.png)
 
-[![CI][github-actions-badge]][github-actions-link]
+[![Version][version-badge]][version-link]
+[![Test CI][ci-badge]][ci-link]
+[![License][license-badge]][license-link]
+[![Discussions][discussions-badge]][discussions-link]
+[![Discord][discord-badge]][discord-link]
+
+# Seaport Gossip
 
 A peer-to-peer network for sharing [Seaport][seaport-repo] orders.
 
@@ -21,7 +27,7 @@ Seaport Gossip uses [libp2p][libp2p-website] with the following configuration:
     - Prisma (ORM)
     - GraphQL (query language)
     - SQLite (DB)
-  - Metrics: Prometheus / Grafana
+  - Metrics _(coming soon)_: Prometheus / Grafana
 - Libp2p
   - Transport: websockets
   - Discovery: bootstrap
@@ -44,7 +50,7 @@ yarn
 
 ### CLI
 
-Ensure you set the proper environment variables:
+Ensure you set the environment variables:
 
 `source example.env`
 
@@ -124,15 +130,11 @@ _Criteria functionality is still under active development_
 
 #### `node.stats(): Promise<NodeStats>`
 
-### Docs
-
-For more thorough documentation see the [API docs][api-docs].
-
 ## GraphQL
 
 The GraphQL server default starts at http://localhost:4000/graphql
 
-You can query for orders, and soon add new orders and subscribe to events.
+You can query for orders, _(and soon)_ add new orders and subscribe to events.
 
 #### Querying orders
 
@@ -226,7 +228,7 @@ subscription {
 
 #### Stats
 
-_To be added_
+_Coming soon_
 
 You can get stats for your node via the `stats` query.
 
@@ -242,8 +244,6 @@ You can get stats for your node via the `stats` query.
     }
     numPeers
     numOrders
-    numOrdersIncludingRemoved
-    numOrdersIncludingInvalidated
     startOfCurrentUTCDay
     ethRPCRequestsSentInCurrentUTCDay
     ethRPCRateLimitExpiredRequests
@@ -253,7 +253,18 @@ You can get stats for your node via the `stats` query.
 ```
 
 [seaport-repo]: https://github.com/ProjectOpenSea/seaport
-[api-docs]: ./docs
 [libp2p-website]: https://libp2p.io/
-[github-actions-badge]: https://github.com/ProjectOpenSea/seaport-gossip/actions/workflows/test.yml/badge.svg?branch=main
-[github-actions-link]: https://github.com/ProjectOpenSea/seaport-gossip/actions
+[ci-badge]: https://github.com/ProjectOpenSea/seaport-gossip/actions/workflows/test.yml/badge.svg?branch=main
+[ci-link]: https://github.com/ProjectOpenSea/seaport-gossip/actions
+[version-badge]: https://img.shields.io/github/package-json/v/ProjectOpenSea/seaport-gossip
+[version-link]: https://github.com/ProjectOpenSea/seaport-gossip/blob/main/package.json
+[coverage-badge]: https://coveralls.io/repos/github/ProjectOpenSea/seaport-gossip/badge.svg?branch=main
+[coverage-link]: https://coveralls.io/github/ProjectOpenSea/seaport-gossip?branch=main
+[license-badge]: https://img.shields.io/github/license/ProjectOpenSea/seaport-gossip
+[license-link]: https://github.com/ProjectOpenSea/seaport-gossip/blob/main/LICENSE
+[docs-badge]: https://img.shields.io/badge/Seaport%20Gossip-documentation-informational
+[docs-link]: https://github.com/ProjectOpenSea/seaport-gossip/tree/main/docs
+[discussions-badge]: https://img.shields.io/badge/Seaport%20Gossip-discussions-blueviolet
+[discussions-link]: https://github.com/ProjectOpenSea/seaport-gossip/discussions
+[discord-badge]: https://img.shields.io/static/v1?logo=discord&label=discord&message=Join&color=blue
+[discord-link]: https://discord.gg/ADXcTXpqry

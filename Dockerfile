@@ -12,7 +12,7 @@ WORKDIR /usr/app
 COPY --from=build /usr/app .
 
 # Sanity check
-RUN node /usr/app/seaport-gossip/dist/bin/start.js --help
+#RUN node /usr/app/seaport-gossip/dist/bin/start.js --help
 
 # NodeJS applications have a default memory limit of 2.5GB.
 # This limit is bit tight, it is recommended to raise the limit

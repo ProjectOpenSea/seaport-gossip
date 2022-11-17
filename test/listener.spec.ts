@@ -11,7 +11,7 @@ chai.use(chaiAsPromised)
 describe('Listener', () => {
   const WILDCARD_COLLECTION_ADDRESS = '*'
   const opts = {
-    logLevel: 'info',
+    logLevel: 'warn',
     ingestOpenSeaOrders: true,
     collectionAddresses: [WILDCARD_COLLECTION_ADDRESS],
   }
