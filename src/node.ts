@@ -201,10 +201,6 @@ export class SeaportGossipNode {
       this.gossipsubSubscribe(address)
     }
 
-    for (const [peerId, multiaddrs] of this.opts.bootnodes) {
-      await this.connect(peerId, multiaddrs)
-    }
-
     this.seaportListener.start()
     await this.ingestor?.start()
 
@@ -216,6 +212,10 @@ export class SeaportGossipNode {
     this.logger.info(
       `${orderCount} order${orderCount === 1 ? '' : 's'} in database`
     )
+
+    for (const [peerId, multiaddrs] of this.opts.bootnodes) {
+      await this.connect(peerId, multiaddrs)
+    }
   }
 
   /**

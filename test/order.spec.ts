@@ -79,7 +79,7 @@ describe('Orders', () => {
     orders = await node.getOrders(zeroAddress, { side: Side.SELL })
     expect(orders.length).to.eq(2)
     orders = await node.getOrders(zeroAddress, { side: Side.BUY })
-    expect(orders.length).to.eq(5)
+    expect(orders.length).to.eq(6)
 
     await expect(node.getOrders('0xinvalid')).to.eventually.be.rejectedWith(
       ErrorInvalidAddress
