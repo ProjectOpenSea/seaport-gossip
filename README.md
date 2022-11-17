@@ -46,6 +46,8 @@ cd seaport-gossip
 yarn
 ```
 
+_npm coming soon_
+
 ## Run
 
 ### CLI
