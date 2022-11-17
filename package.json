@@ -9,6 +9,9 @@
     "src",
     "prisma"
   ],
+  "engines" : { 
+    "node" : ">=16.15.1"
+  },
   "type": "module",
   "types": "./dist/index.d.ts",
   "exports": {

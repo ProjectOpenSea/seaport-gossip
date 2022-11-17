@@ -60,7 +60,6 @@ import type { PeerInfo } from '@libp2p/interface-peer-info'
 import type { Multiaddr } from '@multiformats/multiaddr'
 import type { Libp2p, Libp2pEvents } from 'libp2p'
 import type winston from 'winston'
-import { exportToProtobuf } from '@libp2p/peer-id-factory'
 
 /**
  * SeaportGossipNode is a p2p client for sharing Seaport orders.

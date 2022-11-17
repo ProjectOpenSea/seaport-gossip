@@ -1,15 +1,16 @@
 import { peerIdFromString } from '@libp2p/peer-id'
+import { createFromProtobuf } from '@libp2p/peer-id-factory'
+import { multiaddr } from '@multiformats/multiaddr'
 import { Order } from '@prisma/client'
 
 import { DEFAULT_SEAPORT_ADDRESS } from './constants.js'
 import { Color } from './log.js'
 
 import type { PeerId } from '@libp2p/interface-peer-id'
-import { multiaddr, Multiaddr } from '@multiformats/multiaddr'
+import type { Multiaddr } from '@multiformats/multiaddr'
 import type { ConsiderationItem, OfferItem } from '@prisma/client'
 import type { BigNumber, ethers } from 'ethers'
 import type winston from 'winston'
-import { createFromPrivKey, createFromProtobuf } from '@libp2p/peer-id-factory'
 
 /**
  * Options for initializing a node.
@@ -189,7 +190,7 @@ export const seaportGossipNodeDefaultOpts = {
           Buffer.from(process.env.SEAPORT_GOSSIP_PEER_ID_PROTOBUF, 'hex')
         )
       : null,
-  hostname: '0.0.0.0',
+  hostname: process.env.SEAPORT_GOSSIP_HOSTNAME ?? '0.0.0.0',
   port:
     process.env.SEAPORT_GOSSIP_PORT !== undefined
       ? Number(process.env.SEAPORT_GOSSIP_PORT)
