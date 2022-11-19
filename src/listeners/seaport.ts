@@ -2,7 +2,6 @@ import { ethers } from 'ethers'
 
 import ISeaport from '../contract-abi/Seaport.json' assert { type: 'json' }
 import { short } from '../index.js'
-import { publishEvent } from '../util/gossipsub.js'
 import { emptyOrderJSON } from '../util/serialize.js'
 import { ItemType, OrderEvent, SeaportEvent } from '../util/types.js'
 
@@ -14,14 +13,12 @@ import type {
   SpentItem,
 } from '../util/types.js'
 import type { OrderValidator } from '../validate/order.js'
-import type { GossipSub } from '@chainsafe/libp2p-gossipsub'
 import type { PrismaClient } from '@prisma/client'
 import type winston from 'winston'
 
 interface SeaportListenersOpts {
   node: SeaportGossipNode
   prisma: PrismaClient
-  gossipsub: GossipSub
   provider: ethers.providers.JsonRpcProvider
   validator: OrderValidator
   logger: winston.Logger
@@ -30,7 +27,6 @@ interface SeaportListenersOpts {
 export class SeaportListener {
   private node: SeaportGossipNode
   private prisma: PrismaClient
-  private gossipsub: GossipSub
   private provider: ethers.providers.JsonRpcProvider
   private validator: OrderValidator
   private logger: winston.Logger
@@ -41,7 +37,6 @@ export class SeaportListener {
   constructor(opts: SeaportListenersOpts) {
     this.node = opts.node
     this.prisma = opts.prisma
-    this.gossipsub = opts.gossipsub
     this.validator = opts.validator
     this.provider = opts.provider
     this.logger = opts.logger
@@ -60,15 +55,8 @@ export class SeaportListener {
 
     this.seaport.on(
       SeaportEvent.ORDER_FULFILLED,
-      async (orderHash, offerer, zone, recipient, offer, consideration) => {
-        await this._onFulfilledEvent(
-          orderHash,
-          offerer,
-          zone,
-          recipient,
-          offer,
-          consideration
-        )
+      async (orderHash, _offerer, _zone, _recipient, offer, consideration) => {
+        await this._onFulfilledEvent(orderHash, offer, consideration)
       }
     )
 
@@ -107,9 +95,6 @@ export class SeaportListener {
    */
   private async _onFulfilledEvent(
     orderHash: string,
-    offerer: Address,
-    zone: Address,
-    recipient: Address,
     offer: SpentItem[],
     consideration: ReceivedItem[]
   ) {
@@ -119,52 +104,54 @@ export class SeaportListener {
       `Received OrderFulfilled event for order hash ${short(orderHash)}`
     )
     const block = await this.provider.getBlock('latest')
-    const blockDetails = {
+    const offerOrConsideration = offer.some(
+      (o) => o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20
+    )
+      ? offer
+      : consideration
+    const lastFulfilledPrice = offerOrConsideration
+      .reduce(
+        (prevValue, o) =>
+          o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20
+            ? prevValue + BigInt(o.amount ?? (o as any).startAmount) // TODO fix, if order is coming from gossipsub does not have amount but start/endAmount
+            : prevValue,
+        0n
+      )
+      .toString()
+    const details = {
       lastValidatedBlockHash: block.hash,
       lastValidatedBlockNumber: block.number.toString(),
       lastFulfilledAt: block.number.toString(),
+      lastFulfilledPrice,
     }
     if (order.numerator === undefined) {
       // Basic order, mark as fully fulfilled
       await this.prisma.orderMetadata.update({
         where: { orderHash },
-        data: { ...blockDetails, isFullyFulfilled: true },
+        data: { ...details, isFullyFulfilled: true, isValid: false },
       })
     } else {
       // Advanced order, update last fulfillment
       const isFullyFulfilled = await this.validator.isFullyFulfilled(orderHash)
-      const offerOrConsideration = offer.some(
-        (o) => o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20
-      )
-        ? offer
-        : consideration
-      const lastFulfilledPrice = offerOrConsideration
-        .reduce(
-          (prevValue, o) =>
-            o.itemType === ItemType.NATIVE || o.itemType === ItemType.ERC20
-              ? prevValue + BigInt(o.amount)
-              : prevValue,
-          0n
-        )
-        .toString()
       await this.prisma.orderMetadata.update({
         where: { orderHash },
         data: {
-          ...blockDetails,
+          ...details,
           isFullyFulfilled,
           lastFulfilledPrice,
+          isValid: isFullyFulfilled ? false : true,
         },
       })
-
-      const event = {
-        event: OrderEvent.FULFILLED,
-        orderHash,
-        order,
-        blockNumber: block.number.toString(),
-        blockHash: block.hash,
-      }
-      await this._publishEvent(event)
     }
+
+    const event = {
+      event: OrderEvent.FULFILLED,
+      orderHash,
+      order,
+      blockNumber: block.number.toString(),
+      blockHash: block.hash,
+    }
+    await this._publishEvent(event)
   }
   /**
    * Handle OrderCancelled event from the Seaport contract.
@@ -243,13 +230,16 @@ export class SeaportListener {
   ) {
     const orders = await this.prisma.order.findMany({
       where: { offerer, counter: { lt: newCounter } },
+      include: { offer: true },
     })
-    if (orders.length === 0) return
     this.logger.info(
       `Received CounterIncremented event for offerer ${short(
         offerer
-      )}, cancelling ${orders.length} orders below new counter of ${newCounter}`
+      )}, cancelling ${orders.length} order${
+        orders.length === 1 ? '' : 's'
+      } below new counter of ${newCounter}`
     )
+    if (orders.length === 0) return
     const block = await this.provider.getBlock('latest')
     for (const order of orders) {
       await this.prisma.orderMetadata.update({
@@ -263,11 +253,19 @@ export class SeaportListener {
     }
 
     if (publishGossipsubEvent) {
+      // Set all offer items to broadcast on every collection address
+      const offer = orders.map((o) => o.offer).flat()
+
       const event = {
         event: OrderEvent.COUNTER_INCREMENTED,
         offerer,
         orderHash: ethers.constants.HashZero,
-        order: { ...emptyOrderJSON, offerer, counter: newCounter },
+        order: {
+          ...emptyOrderJSON,
+          offerer,
+          counter: newCounter,
+          offer,
+        },
         blockNumber: block.number.toString(),
         blockHash: block.hash,
       }
@@ -287,6 +285,6 @@ export class SeaportListener {
 
   /** Convenience handler */
   private async _publishEvent(event: GossipsubEvent) {
-    await publishEvent(event, this.gossipsub, this.logger)
+    await (this.node as any)._publishEvent(event)
   }
 }

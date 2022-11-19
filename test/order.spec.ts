@@ -34,7 +34,7 @@ describe('Orders', () => {
     web3Provider: new MockProvider('mainnet') as any,
     logLevel: 'off',
   }
-  const node = new SeaportGossipNode(opts)
+  let node = new SeaportGossipNode(opts)
   const prisma: PrismaClient = (node as any).prisma
 
   beforeEach(async () => {
@@ -355,5 +355,25 @@ describe('Orders', () => {
         )
       )
     }
+  })
+
+  it('should not exceed the max order limits', async () => {
+    await node.stop()
+    node = new SeaportGossipNode({
+      ...opts,
+      maxOrders: 2,
+      maxOrdersPerOfferer: 2,
+    })
+    await node.start()
+    let numValid = await node.addOrders(validBasicOrders.slice(0, 3))
+    expect(numValid).to.eq(2)
+    numValid = await node.addOrders(validBasicOrders.slice(3, 4))
+    expect(numValid).to.eq(0)
+    await truncateTables(node)
+    const ordersBySameOfferer = validBasicOrders
+      .slice(0, 3)
+      .map((o) => ({ ...o, offerer: validBasicOrders[0].offerer }))
+    numValid = await node.addOrders(ordersBySameOfferer)
+    expect(numValid).to.eq(2)
   })
 })

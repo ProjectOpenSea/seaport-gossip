@@ -2,11 +2,16 @@ import { createEd25519PeerId } from '@libp2p/peer-id-factory'
 import { multiaddr } from '@multiformats/multiaddr'
 import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
+import { BigNumber } from 'ethers'
 import { setTimeout } from 'timers/promises'
 
-import { SeaportGossipNode } from '../dist/index.js'
+import {
+  SeaportGossipNode,
+  orderJSONToChecksummedAddresses,
+} from '../dist/index.js'
+import { deriveOrderHash } from '../dist/util/order.js'
+import { OrderEvent } from '../dist/util/types.js'
 
-// import invalidBasicOrders from './testdata/orders/basic-invalid.json' assert { type: 'json' }
 import validBasicOrders from './testdata/orders/basic-valid.json' assert { type: 'json' }
 import { truncateTables } from './util/db.js'
 import { MockProvider } from './util/provider.js'
@@ -25,7 +30,7 @@ describe('Gossipsub', () => {
   const opts = {
     web3Provider: new MockProvider('mainnet') as any,
     collectionAddresses: [validOrder.offer[0].token],
-    logLevel: 'off',
+    logLevel: 'warn',
   }
 
   beforeEach(async () => {
@@ -56,7 +61,7 @@ describe('Gossipsub', () => {
     }
   })
 
-  after(async () => {
+  afterEach(async () => {
     for (const node of [node1, node2]) {
       await truncateTables(node)
       await node.stop()
@@ -71,5 +76,108 @@ describe('Gossipsub', () => {
 
     const node2Orders = await node2.getOrders(validOrder.offer[0].token)
     expect(node1Orders).to.deep.eq(node2Orders)
+  })
+
+  it('should handle gossip events', async () => {
+    // NEW
+    const order = {
+      ...validOrder,
+      salt: BigNumber.from(validOrder.salt).toString(),
+    }
+    const orderHash = deriveOrderHash(order)
+    await node1.addOrders([order])
+    await setTimeout(1000)
+    expect(await node2.getOrderByHash(orderHash)).to.deep.eq(
+      orderJSONToChecksummedAddresses(order)
+    )
+
+    const getOrderMetadata = async (node: SeaportGossipNode) =>
+      (node as any).prisma.orderMetadata.findFirst({
+        where: { orderHash },
+      })
+
+    // COUNTER_INCREMENTED
+    let metadata = await getOrderMetadata(node2)
+    expect(metadata.isValid).to.be.true
+    await (node1 as any).seaportListener._onCounterIncrementedEvent(
+      1,
+      order.offerer,
+      true
+    )
+    await setTimeout(1000)
+    metadata = await getOrderMetadata(node2)
+    expect(metadata.isValid).to.be.false
+
+    const setOrderToValid = async (node: SeaportGossipNode) =>
+      (node as any).prisma.orderMetadata.update({
+        where: { orderHash },
+        data: { isValid: true },
+      })
+
+    await setOrderToValid(node1)
+    await setOrderToValid(node2)
+
+    // FULFILLED
+    metadata = await getOrderMetadata(node2)
+    expect(metadata.isValid).to.be.true
+    expect(metadata.isFullyFulfilled).to.be.false
+    expect(metadata.lastFulfilledAt).to.be.null
+    expect(metadata.lastFulfilledPrice).to.be.null
+    await (node1 as any).seaportListener._onFulfilledEvent(
+      orderHash,
+      order.offer,
+      order.consideration
+    )
+    await setTimeout(1000)
+    metadata = await getOrderMetadata(node2)
+    expect(metadata.isFullyFulfilled).to.be.true
+    expect(metadata.lastFulfilledAt).to.eq('1337')
+    expect(metadata.lastFulfilledPrice).to.not.be.null
+    expect(metadata.isValid).to.be.false
+
+    await setOrderToValid(node1)
+    await setOrderToValid(node2)
+
+    // CANCELLED
+    metadata = await getOrderMetadata(node2)
+    expect(metadata.isValid).to.be.true
+    await (node1 as any).seaportListener._onCancelledEvent(
+      orderHash,
+      order.offerer,
+      order.zone
+    )
+    await setTimeout(1000)
+    metadata = await getOrderMetadata(node2)
+    expect(metadata.isValid).to.be.false
+
+    // VALIDATED
+    metadata = await getOrderMetadata(node2)
+    expect(metadata.isValid).to.be.false
+    let event = {
+      event: OrderEvent.VALIDATED,
+      orderHash,
+      order,
+      blockNumber: '1337',
+      blockHash: `0x${'2'.repeat(64)}`,
+    }
+    await (node1 as any)._publishEvent(event)
+    await setTimeout(1000)
+    metadata = await getOrderMetadata(node2)
+    expect(metadata.isValid).to.be.true
+
+    // INVALIDATED
+    metadata = await getOrderMetadata(node2)
+    expect(metadata.isValid).to.be.true
+    event = {
+      event: OrderEvent.INVALIDATED,
+      orderHash,
+      order,
+      blockNumber: '1337',
+      blockHash: `0x${'2'.repeat(64)}`,
+    }
+    await (node1 as any)._publishEvent(event)
+    await setTimeout(1000)
+    metadata = await getOrderMetadata(node2)
+    expect(metadata.isValid).to.be.false
   }).timeout(10000)
 })

@@ -70,20 +70,31 @@ export const orderToJSON = (order: OrderWithItems): OrderJSON => {
     order.additionalRecipients !== undefined &&
     order.additionalRecipients !== null
       ? order.additionalRecipients.split(',')
-      : []
+      : undefined
 
   delete (order as any).hash
 
-  return {
+  const json = {
     ...order,
     offer: formattedOfferItems,
     consideration: formattedConsiderationItems,
     salt: BigNumber.from(order.salt).toString(),
     additionalRecipients,
-    numerator: order.numerator?.toString() ?? '0',
-    denominator: order.denominator?.toString() ?? '0',
-    extraData: order.extraData?.toString() ?? ethers.constants.HashZero,
+    numerator: order.numerator?.toString(),
+    denominator: order.denominator?.toString(),
+    extraData: order.extraData?.toString(),
   }
+
+  if (json.additionalRecipients === undefined) delete json.additionalRecipients
+  if (json.numerator === undefined) delete json.numerator
+  if (json.denominator === undefined) delete json.denominator
+  if (
+    json.extraData === undefined ||
+    json.extraData === ethers.constants.HashZero
+  )
+    delete json.extraData
+
+  return json
 }
 
 /**

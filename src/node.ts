@@ -87,8 +87,6 @@ export class SeaportGossipNode {
   private nextReqId = 0
 
   private revalidateInterval?: NodeJS.Timer
-  private REVALIDATE_INTERVAL = 60 * 1000 // 60s
-  private REVALIDATE_BLOCK_DISTANCE = 25 // 25 blocks (5 min)
 
   constructor(opts: SeaportGossipNodeOpts = {}) {
     this.opts = Object.freeze({ ...seaportGossipNodeDefaultOpts, ...opts })
@@ -117,12 +115,11 @@ export class SeaportGossipNode {
       web3Provider: this.provider,
       logger: this.logger,
       validateOpenSeaFeeRecipient: true,
-      revalidateBlockDistance: this.REVALIDATE_BLOCK_DISTANCE,
+      revalidateBlockDistance: this.opts.revalidateBlockDistance,
     })
     this.seaportListener = new SeaportListener({
       node: this,
       prisma: this.prisma,
-      gossipsub: this.gossipsub,
       provider: this.provider,
       validator: this.validator,
       logger: this.logger,
@@ -206,7 +203,7 @@ export class SeaportGossipNode {
 
     this.revalidateInterval = setInterval(async () => {
       await this._validateStaleOrders()
-    }, this.REVALIDATE_INTERVAL)
+    }, this.opts.revalidateInterval * 1000)
 
     const orderCount = await this.prisma.order.count()
     this.logger.info(
@@ -230,6 +227,7 @@ export class SeaportGossipNode {
     this._removeListeners()
     await this.libp2p.stop()
     await this.graphql.stop()
+    await this.prisma.$disconnect()
     this.running = false
   }
 
@@ -538,10 +536,10 @@ export class SeaportGossipNode {
   public async _validateStaleOrders() {
     const block = await this.provider.getBlock('latest')
     const orderMetadata = await this.prisma.orderMetadata.findMany({
-      take: 10,
+      take: 50,
       where: {
         lastValidatedBlockNumber: {
-          lt: `${block.number - this.REVALIDATE_BLOCK_DISTANCE}`,
+          lte: `${block.number - this.opts.revalidateBlockDistance}`,
         },
       },
       orderBy: { lastValidatedBlockNumber: 'asc' },
@@ -696,8 +694,8 @@ export class SeaportGossipNode {
       }
 
       // Parse and validate order
-      const { order } = event
-      let { event: orderEvent } = event
+      const { order, orderHash } = event
+      const { event: orderEvent } = event
       let acceptance
 
       if (orderEvent === OrderEvent.COUNTER_INCREMENTED) {
@@ -737,18 +735,40 @@ export class SeaportGossipNode {
               acceptance = MessageAcceptance.Accept
               // TODO: set to MessageAcceptance.Reject if isValid on gossiped blockHash,
               //       and rebroadcast as OrderEvent.VALIDATED
-              orderEvent = OrderEvent.VALIDATED
+              // orderEvent = OrderEvent.VALIDATED
             } else {
               acceptance = MessageAcceptance.Accept
             }
           } else if (orderEvent === OrderEvent.FULFILLED) {
             // TODO: accept if there was indeed a fulfilled event at the blockHash
             acceptance = MessageAcceptance.Accept
+
+            await (this.seaportListener as any)._onFulfilledEvent(
+              orderHash,
+              order.offer,
+              order.consideration
+            )
           } else {
             acceptance =
               isValid === true
                 ? MessageAcceptance.Accept
                 : MessageAcceptance.Reject
+          }
+          if (
+            [
+              OrderEvent.INVALIDATED,
+              OrderEvent.VALIDATED,
+              OrderEvent.CANCELLED,
+            ].includes(orderEvent)
+          ) {
+            await this.prisma.orderMetadata.update({
+              where: { orderHash },
+              data: {
+                isValid: orderEvent === OrderEvent.VALIDATED ? true : false,
+                lastValidatedBlockHash: metadata.lastValidatedBlockHash,
+                lastValidatedBlockNumber: metadata.lastValidatedBlockNumber,
+              },
+            })
           }
           this.logger.info(
             `Received ${isValid === true ? 'valid' : 'invalid'} order ${short(

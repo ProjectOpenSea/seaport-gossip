@@ -21,22 +21,22 @@ export const gossipsubMsgIdFn = (msg: Message) => {
   return Uint8Array.from(
     Buffer.concat([
       prefixedStrToBuf(msg.topic),
+      Buffer.from(BigNumber.from(event.event).toHexString().slice(2), 'hex'),
       prefixedStrToBuf(deriveOrderHash(order)),
+      Buffer.from(event.blockHash),
     ])
   )
 }
 
 const defaultOrderValues = sszOrder.defaultValue()
 
-/*
-const defaultAdvancedOrderValues = {
+export const defaultAdvancedOrderValues = {
   additionalRecipients: [],
-  denominator: 0,
-  numerator: 0,
+  denominator: '0',
+  numerator: '0',
   extraData:
     '0x0000000000000000000000000000000000000000000000000000000000000000',
 }
-*/
 
 const defaultAdvancedOrderNativeValues = {
   additionalRecipients: [],

@@ -176,6 +176,18 @@ export interface SeaportGossipNodeOpts {
    * Default: none
    */
   customLibp2pConfig?: object
+
+  /**
+   * Revalidate stale orders on this interval in seconds.
+   * Default: 60 seconds
+   */
+  revalidateInterval?: number
+
+  /**
+   * Revalidate stale orders farther than this block distance.
+   * Default: 25 blocks (~5 minutes)
+   */
+  revalidateBlockDistance?: number
 }
 
 /**
@@ -230,6 +242,8 @@ export const seaportGossipNodeDefaultOpts = {
   logColor: Color.FG_WHITE,
   clientMode: true,
   customLibp2pConfig: {},
+  revalidateInterval: 60,
+  revalidateBlockDistance: 25,
 }
 
 /**

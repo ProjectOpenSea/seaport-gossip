@@ -1,45 +1,107 @@
 import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
-import { setTimeout } from 'timers/promises'
+import { BigNumber } from 'ethers'
 
-import { SeaportGossipNode, Side } from '../dist/index.js'
+import { SeaportGossipNode } from '../dist/index.js'
+import { deriveOrderHash } from '../dist/util/order.js'
 
+import validBasicOrders from './testdata/orders/basic-valid.json' assert { type: 'json' }
 import { truncateTables } from './util/db.js'
+import { MockProvider } from './util/provider.js'
 
 chai.use(chaiAsPromised)
 
 describe('Listener', () => {
-  const WILDCARD_COLLECTION_ADDRESS = '*'
+  const validOrder = validBasicOrders[0]
   const opts = {
-    logLevel: 'warn',
+    web3Provider: new MockProvider('mainnet') as any,
     ingestOpenSeaOrders: true,
-    collectionAddresses: [WILDCARD_COLLECTION_ADDRESS],
+    collectionAddresses: [],
+    logLevel: 'warn',
   }
+
   const node = new SeaportGossipNode(opts)
+
+  beforeEach(async () => {
+    await node.start()
+  })
 
   afterEach(async () => {
     await truncateTables(node)
     await node.stop()
   })
 
-  it('should listen to events from Seaport', async function () {
-    if (process.env.WEB3_PROVIDER === undefined) {
-      console.log('Skipping test due to missing env WEB3_PROVIDER')
-      this.skip()
+  it('should handle events from Seaport', async function () {
+    const order = {
+      ...validOrder,
+      salt: BigNumber.from(validOrder.salt).toString(),
     }
+    const orderHash = deriveOrderHash(order)
+    await node.addOrders([order])
 
-    await node.start()
-    expect(await node.getOrderCount(WILDCARD_COLLECTION_ADDRESS)).to.eq(0)
+    const getOrderMetadata = async () =>
+      (node as any).prisma.orderMetadata.findFirst({
+        where: { orderHash },
+      })
 
-    // Wait a few seconds to receive some events
-    await setTimeout(2500)
+    // COUNTER_INCREMENTED
+    let metadata = await getOrderMetadata()
+    expect(metadata.isValid).to.be.true
+    await (node as any).seaportListener._onCounterIncrementedEvent(
+      1,
+      order.offerer,
+      true
+    )
+    metadata = await getOrderMetadata()
+    expect(metadata.isValid).to.be.false
 
-    expect(
-      await node.getOrderCount(WILDCARD_COLLECTION_ADDRESS, { side: Side.BUY })
-    ).to.be.greaterThan(0)
-    expect(
-      await node.getOrderCount(WILDCARD_COLLECTION_ADDRESS, { side: Side.SELL })
-    ).to.be.greaterThan(0)
-    ;(node as any).ingestor.stop()
+    const setOrderToValid = async () =>
+      (node as any).prisma.orderMetadata.update({
+        where: { orderHash },
+        data: { isValid: true },
+      })
+
+    await setOrderToValid()
+
+    // FULFILLED
+    metadata = await getOrderMetadata()
+    expect(metadata.isValid).to.be.true
+    expect(metadata.isFullyFulfilled).to.be.false
+    expect(metadata.lastFulfilledAt).to.be.null
+    expect(metadata.lastFulfilledPrice).to.be.null
+    await (node as any).seaportListener._onFulfilledEvent(
+      orderHash,
+      order.offer,
+      order.consideration
+    )
+    metadata = await getOrderMetadata()
+    expect(metadata.isFullyFulfilled).to.be.true
+    expect(metadata.lastFulfilledAt).to.eq('1337')
+    expect(metadata.lastFulfilledPrice).to.not.be.null
+    expect(metadata.isValid).to.be.false
+
+    await setOrderToValid()
+
+    // CANCELLED
+    metadata = await getOrderMetadata()
+    expect(metadata.isValid).to.be.true
+    await (node as any).seaportListener._onCancelledEvent(
+      orderHash,
+      order.offerer,
+      order.zone
+    )
+    metadata = await getOrderMetadata()
+    expect(metadata.isValid).to.be.false
+
+    // VALIDATED
+    metadata = await getOrderMetadata()
+    expect(metadata.isValid).to.be.false
+    await (node as any).seaportListener._onValidatedEvent(
+      orderHash,
+      order.offerer,
+      order.zone
+    )
+    metadata = await getOrderMetadata()
+    expect(metadata.isValid).to.be.true
   })
 })

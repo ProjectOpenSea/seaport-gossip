@@ -6,6 +6,7 @@ import {
   orderSignatureToFixed65Bytes,
   orderSignatureToVariableBytes,
 } from './util/order.js'
+import { defaultAdvancedOrderValues } from './util/serialize.js'
 import {
   CriteriaItems as sszCriteriaItems,
   GetCriteria as sszGetCriteria,
@@ -78,14 +79,20 @@ export const ordersEncode = (
   reqId: number,
   orders: OrderJSON[]
 ): Uint8Array => {
-  // If signature is 64 bytes, encode it as 65 bytes since
-  // ssz strictly requires it to be 65 bytes. We will make
-  // it 64 bytes again on decode.
-  for (const order of orders) {
+  const formattedOrders = []
+  for (let order of orders) {
+    // If signature is 64 bytes, encode it as 65 bytes since
+    // ssz strictly requires it to be 65 bytes. We will make
+    // it 64 bytes again on decode.
     order.signature = orderSignatureToFixed65Bytes(order.signature)
+
+    // Set defaults for optional values
+    order = { ...defaultAdvancedOrderValues, ...order }
+
+    formattedOrders.push(order)
   }
 
-  const ssz = sszOrders.fromJson({ reqId, orders })
+  const ssz = sszOrders.fromJson({ reqId, orders: formattedOrders })
   return sszOrders.serialize(ssz)
 }
 
@@ -120,6 +127,13 @@ export const ordersDecode = (data: Uint8Array) => {
     for (const item of order.consideration) {
       item.recipient = ethers.utils.getAddress(bufToPrefixedStr(item.recipient))
     }
+
+    // Delete optional values
+    if (order.additionalRecipients.length === 0)
+      delete order.additionalRecipients
+    if (order.numerator === '0') delete order.numerator
+    if (order.denominator === '0') delete order.denominator
+    if (order.extraData === ethers.constants.HashZero) delete order.extraData
   }
   return { reqId, orders: orders as OrderJSON[] }
 }

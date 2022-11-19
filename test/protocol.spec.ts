@@ -68,7 +68,6 @@ describe('Protocol', () => {
     const node1Orders = await node1.getOrders(validOrder.offer[0].token)
 
     await node2.connect(...node1Bootnode)
-    // const node2Orders = await node2.getOrders(validOrder.offer[0].token)
     const node2Orders = await (node2 as any)._getOrdersFromPeer(
       node1Bootnode[0],
       validOrder.offer[0].token,

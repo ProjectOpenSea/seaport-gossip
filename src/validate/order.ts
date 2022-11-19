@@ -99,8 +99,8 @@ export class OrderValidator {
     // for supportsInterface(IERC1155) so we will ignore that specific error.
     if (
       errorsAndWarnings.errors.includes(400) === true &&
-      order.offer.some(
-        (offer) => offer.token === SHARED_STOREFRONT_LAZY_MINT_ADAPTER
+      [...order.offer, ...order.consideration].some(
+        (item) => item.token === SHARED_STOREFRONT_LAZY_MINT_ADAPTER
       )
     ) {
       errorsAndWarnings.errors = errorsAndWarnings.errors.filter(
@@ -149,7 +149,11 @@ export class OrderValidator {
       } else {
         await this.prisma.orderMetadata.update({
           where: { orderHash: hash },
-          data: { isValid },
+          data: {
+            isValid,
+            lastValidatedBlockHash: lastBlockHash,
+            lastValidatedBlockNumber: lastBlockNumber.toString(),
+          },
         })
       }
     }
@@ -165,7 +169,7 @@ export class OrderValidator {
   public async isFullyFulfilled(hash: string) {
     const status: OrderStatus = await this.seaport.getOrderStatus(hash)
     const [totalFilled, totalSize] = status.slice(2) as [BigNumber, BigNumber]
-    return totalFilled.eq(totalSize)
+    return !totalFilled.isZero() && totalFilled.eq(totalSize)
   }
 
   /**
