@@ -1,13 +1,13 @@
-FROM node:16-alpine as build
+FROM node:16-bullseye as build
 WORKDIR /usr/app
-RUN apk update && apk add --no-cache bash git yarn && rm -rf /var/cache/apk/*
+RUN apt-get update
 
 RUN git clone --depth 1 --branch main https://github.com/ProjectOpenSea/seaport-gossip.git
 
 WORKDIR /usr/app/seaport-gossip
 RUN yarn
 
-FROM node:16-alpine
+FROM node:16-bullseye
 WORKDIR /usr/app
 COPY --from=build /usr/app .
 
