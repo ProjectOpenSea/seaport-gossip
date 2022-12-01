@@ -2,6 +2,7 @@ import { createEd25519PeerId } from '@libp2p/peer-id-factory'
 import { multiaddr } from '@multiformats/multiaddr'
 import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
+import { setTimeout } from 'timers/promises'
 
 import { SeaportGossipNode } from '../dist/index.js'
 
@@ -23,7 +24,7 @@ describe('Protocol', () => {
 
   const opts = {
     web3Provider: new MockProvider('mainnet') as any,
-    logLevel: 'off',
+    logLevel: 'warn',
   }
 
   beforeEach(async () => {
@@ -104,5 +105,30 @@ describe('Protocol', () => {
       {}
     )
     expect(node2CriteriaItems).to.deep.eq([0n, 2n, 10n])
+  })
+
+  it('node should get all orders from peer on connect', async () => {
+    await node1.stop()
+    const validOrder = validBasicOrders[0]
+    node1 = new SeaportGossipNode({
+      ...opts,
+      peerId: node1Bootnode[0],
+      port: 8998,
+      graphqlPort: 4000,
+      getAllOrdersFromPeers: true,
+      collectionAddresses: [validOrder.offer[0].token],
+    })
+    await node1.start()
+
+    await node2.addOrders([validOrder])
+
+    await node2.connect(...node1Bootnode)
+    await setTimeout(1000)
+
+    const node1OrderCount = await node1.getOrderCount(
+      validOrder.offer[0].token,
+      {}
+    )
+    expect(node1OrderCount).to.eq(1)
   })
 })

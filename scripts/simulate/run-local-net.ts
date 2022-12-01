@@ -117,5 +117,5 @@ const invalidOrder = invalidBasicOrders[0]
 await node3.addOrders([invalidOrder] as any)
 
 // Force gossip invalid order to connected peer
-await (node3 as any)._publishOrder(invalidOrder)
+await node3.publishOrder(invalidOrder)
 */

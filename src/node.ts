@@ -1,15 +1,19 @@
-import { GossipSub } from '@chainsafe/libp2p-gossipsub'
-import { MessageAcceptance } from '@chainsafe/libp2p-gossipsub/types'
-import { Noise } from '@chainsafe/libp2p-noise'
-import { KadDHT } from '@libp2p/kad-dht'
-import { Mplex } from '@libp2p/mplex'
-import { WebSockets } from '@libp2p/websockets'
+import { gossipsub } from '@chainsafe/libp2p-gossipsub'
+import { noise } from '@chainsafe/libp2p-noise'
+import { TopicValidatorResult } from '@libp2p/interface-pubsub'
+import { kadDHT } from '@libp2p/kad-dht'
+import { mplex } from '@libp2p/mplex'
+import { prometheusMetrics } from '@libp2p/prometheus-metrics'
+import { webSockets } from '@libp2p/websockets'
 import { PrismaClient } from '@prisma/client'
 import { ethers } from 'ethers'
+import { createServer } from 'http'
 import { pipe } from 'it-pipe'
 import { createLibp2p } from 'libp2p'
+import PromClient from 'prom-client'
 import { Uint8ArrayList } from 'uint8arraylist'
 
+import ISeaport from './contract-abi/Seaport.json' assert { type: 'json' }
 import { startGraphqlServer } from './db/index.js'
 import { OpenSeaOrderIngestor } from './ingestors/opensea.js'
 import { SeaportListener } from './listeners/seaport.js'
@@ -28,6 +32,7 @@ import {
 import {
   addOrder,
   exceedsMaxOrderLimits,
+  exceedsMaxOrders,
   formatGetOrdersOpts,
   queryOrders,
 } from './query/order.js'
@@ -42,16 +47,23 @@ import {
 import { publishEvent } from './util/gossipsub.js'
 import { isValidAddress, short } from './util/helpers.js'
 import { createWinstonLogger } from './util/log.js'
+import { setupMetrics } from './util/metrics.js'
 import { deriveOrderHash } from './util/order.js'
 import {
   decodeGossipsubEvent,
   emptyOrderJSON,
   gossipsubMsgIdFn,
 } from './util/serialize.js'
-import { OrderEvent, seaportGossipNodeDefaultOpts } from './util/types.js'
+import {
+  OrderEvent,
+  OrderSort,
+  Side,
+  seaportGossipNodeDefaultOpts,
+} from './util/types.js'
 import { OrderValidator } from './validate/index.js'
 
 import type { GetOrdersOpts } from './query/order.js'
+import type { SeaportGossipMetrics } from './util/metrics.js'
 import type {
   Address,
   GossipsubEvent,
@@ -59,10 +71,11 @@ import type {
   OrderWithItems,
   SeaportGossipNodeOpts,
 } from './util/types.js'
-import type { GossipsubMessage } from '@chainsafe/libp2p-gossipsub'
+import type { GossipSub, GossipsubMessage } from '@chainsafe/libp2p-gossipsub'
 import type { PeerId } from '@libp2p/interface-peer-id'
 import type { PeerInfo } from '@libp2p/interface-peer-info'
 import type { Multiaddr } from '@multiformats/multiaddr'
+import type { Server } from 'http'
 import type { Libp2p, Libp2pEvents } from 'libp2p'
 import type winston from 'winston'
 
@@ -73,23 +86,27 @@ export class SeaportGossipNode {
   public libp2p!: Libp2p
   public running = false
 
-  private opts: Required<SeaportGossipNodeOpts>
-  private gossipsub!: GossipSub
   private graphql: ReturnType<typeof startGraphqlServer>
-  private prisma: PrismaClient
-  private validator: OrderValidator
-  private logger: winston.Logger
+  private metricsHttpServer?: Server
   private ingestor?: OpenSeaOrderIngestor
   private seaportListener: SeaportListener
 
-  private provider: ethers.providers.JsonRpcProvider
+  public opts: Required<SeaportGossipNodeOpts>
+  public provider: ethers.providers.JsonRpcProvider
+  public seaport: ethers.Contract
+  public prisma: PrismaClient
+  public validator: OrderValidator
+  public logger: winston.Logger
+  public metrics?: SeaportGossipMetrics
 
   private nextReqId = 0
-
   private revalidateInterval?: NodeJS.Timer
 
   constructor(opts: SeaportGossipNodeOpts = {}) {
     this.opts = Object.freeze({ ...seaportGossipNodeDefaultOpts, ...opts })
+
+    this._setupMetrics()
+
     this.logger =
       this.opts.logger ??
       createWinstonLogger(
@@ -104,34 +121,24 @@ export class SeaportGossipNode {
     this.prisma = new PrismaClient({
       datasources: { db: { url: `file:../${this.opts.datadir}/dev.db` } },
     })
+
     this.provider =
       typeof this.opts.web3Provider === 'string'
         ? new ethers.providers.JsonRpcProvider(this.opts.web3Provider)
         : this.opts.web3Provider
+    this.seaport = new ethers.Contract(
+      this.opts.seaportAddress,
+      ISeaport,
+      this.provider
+    )
 
-    this.validator = new OrderValidator({
-      prisma: this.prisma,
-      seaportAddress: this.opts.seaportAddress,
-      web3Provider: this.provider,
-      logger: this.logger,
-      validateOpenSeaFeeRecipient: true,
-      revalidateBlockDistance: this.opts.revalidateBlockDistance,
-    })
-    this.seaportListener = new SeaportListener({
-      node: this,
-      prisma: this.prisma,
-      provider: this.provider,
-      validator: this.validator,
-      logger: this.logger,
-    })
+    this.validator = new OrderValidator({ node: this })
+    this.seaportListener = new SeaportListener({ node: this })
     if (
       this.opts.ingestOpenSeaOrders === true &&
       this.opts.openSeaAPIKey !== ''
     ) {
-      this.ingestor = new OpenSeaOrderIngestor({
-        node: this,
-        logger: this.logger,
-      })
+      this.ingestor = new OpenSeaOrderIngestor({ node: this })
     }
   }
 
@@ -141,38 +148,45 @@ export class SeaportGossipNode {
   public async start() {
     if (this.running) return
 
-    const seaportDHT = new KadDHT({
+    if (this.metricsHttpServer !== undefined) {
+      this.logger.info(
+        `Running Metrics HTTP Server at http://0.0.0.0:${this.opts.metricsServerPort}`
+      )
+      this.metricsHttpServer.listen(this.opts.metricsServerPort)
+    }
+
+    const seaportDHT = kadDHT({
       protocolPrefix: '/seaport',
       clientMode: this.opts.clientMode,
     })
 
-    this.gossipsub = new GossipSub({
+    const pubsub = gossipsub({
       allowPublishToZeroPeers: true,
       asyncValidation: true,
       awaitRpcHandler: true,
       awaitRpcMessageHandler: true,
       doPX: !this.opts.clientMode,
-      msgIdFn: gossipsubMsgIdFn as any,
+      msgIdFn: gossipsubMsgIdFn,
     })
+
+    const metrics = this.opts.metrics ? prometheusMetrics() : undefined
 
     const libp2pOpts = {
       peerId: this.opts.peerId ?? undefined,
       addresses: {
         listen: [`/ip4/${this.opts.hostname}/tcp/${this.opts.port}/ws`],
       },
-      transports: [new WebSockets()] as any,
-      connectionEncryption: [new Noise()],
-      streamMuxers: [new Mplex()] as any,
+      transports: [webSockets()],
+      connectionEncryption: [noise()],
+      streamMuxers: [mplex()],
       connectionManager: {
         autoDial: true,
         minConnections: this.opts.minConnections,
         maxConnections: this.opts.maxConnections,
       },
       dht: seaportDHT,
-      pubsub: this.gossipsub as any,
-      metrics: {
-        enabled: this.opts.metricsAddress !== null,
-      },
+      pubsub,
+      metrics,
       ...this.opts.customLibp2pConfig,
     }
 
@@ -228,7 +242,31 @@ export class SeaportGossipNode {
     await this.libp2p.stop()
     await this.graphql.stop()
     await this.prisma.$disconnect()
+    if (this.metricsHttpServer !== undefined) {
+      this.logger.info('Closing Metrics HTTP Server.')
+      this.metricsHttpServer.close(() => {
+        this.logger.info('Metrics HTTP Server closed.')
+      })
+    }
     this.running = false
+  }
+
+  /**
+   * If metrics are enabled, starts server and handles `/metrics` endpoint.
+   */
+  private _setupMetrics() {
+    if (this.opts.metrics) {
+      this.metrics = setupMetrics(this)
+      this.metricsHttpServer = createServer(async (req, res) => {
+        if (req.method !== 'GET' || req.url !== '/metrics') {
+          res.statusCode = 405
+          res.end('{"error":"METHOD_NOT_ALLOWED"}')
+          return
+        }
+        res.setHeader('Content-Type', PromClient.register.contentType)
+        res.end(await PromClient.register.metrics())
+      })
+    }
   }
 
   /** Adds handling the libp2p protocols to the node */
@@ -246,7 +284,6 @@ export class SeaportGossipNode {
             const message = data.slice(4)
             const returnData = await handleProtocol(
               this,
-              this.logger,
               connection.remotePeer,
               code,
               message
@@ -266,13 +303,61 @@ export class SeaportGossipNode {
     )
   }
 
+  private async _getAllOrdersFromPeer(peerId: PeerId, address: string) {
+    let totalReturned = 0
+    let lastReturned = 0
+    let totalAdded = 0
+    let lastAdded = 0
+    const opts = {
+      side: Side.SELL,
+      count: 50,
+      offset: 0,
+      sort: OrderSort.OLDEST,
+    }
+    const getOrders = async () => {
+      if (await exceedsMaxOrders(this)) {
+        lastReturned = 0
+        lastAdded = 0
+        return
+      }
+      const orders = await this._getOrdersFromPeer(peerId, address, opts)
+      lastReturned = orders.length
+      totalReturned += lastReturned
+      lastAdded = await this.addOrders(orders)
+      totalAdded += lastAdded
+      opts.offset += opts.count
+      return orders
+    }
+    // Get SELL side orders
+    await getOrders()
+    while (lastReturned === opts.count) {
+      await getOrders()
+    }
+    // Get BUY side orders
+    opts.side = Side.BUY
+    opts.offset = 0
+    await getOrders()
+    while (lastReturned === opts.count) {
+      await getOrders()
+    }
+    this.logger.info(
+      `Received ${totalReturned} orders, added ${totalAdded}, for collection ${short(
+        address
+      )} from peer ${short(peerId.toString())}`
+    )
+  }
+
   private async _getOrdersFromPeer(
     peerId: PeerId,
     address: string,
-    opts: Required<GetOrdersOpts>
+    opts: GetOrdersOpts
   ) {
     opts = formatGetOrdersOpts(opts)
-    const hashes = await this._getOrdersHashesFromPeer(peerId, address, opts)
+    const hashes = await this._getOrdersHashesFromPeer(
+      peerId,
+      address,
+      opts as Required<GetOrdersOpts>
+    )
     const orders = []
     const hashesToRequest = []
     for (const hash of hashes) {
@@ -288,6 +373,10 @@ export class SeaportGossipNode {
       hashesToRequest
     )
     orders.push(...ordersFromPeer)
+    this.metrics?.ordersReceived.inc(
+      { peerId: peerId.toString() },
+      ordersFromPeer.length
+    )
     return orders
   }
 
@@ -325,7 +414,12 @@ export class SeaportGossipNode {
       reqId,
       message
     )
-    return orderHashesDecode(ordersMessage).hashes
+    const { hashes } = orderHashesDecode(ordersMessage)
+    this.metrics?.ordersRequested.inc(
+      { peerId: peerId.toString() },
+      hashes.length
+    )
+    return hashes
   }
 
   private async _getOrdersByHashesFromPeer(peerId: PeerId, hashes: string[]) {
@@ -439,15 +533,6 @@ export class SeaportGossipNode {
       opts
     )) as OrderWithItems[]
     const ordersJSON = orders.map((o) => orderToJSON(o))
-
-    if (opts.validate === false) return ordersJSON
-
-    const validOrders = []
-    for (const order of ordersJSON) {
-      const [isValid] = await this.validator.validate(order)
-      if (isValid) validOrders.push(order)
-    }
-
     return ordersJSON
   }
 
@@ -575,67 +660,57 @@ export class SeaportGossipNode {
           blockNumber: block.number.toString(),
           blockHash: block.hash,
         }
-        await this._publishEvent(event)
+        await this.publishEvent(event)
       }
     }
+    this.metrics?.ordersStaleRevalidated.inc(orderMetadata.length)
   }
 
   /**
    * Add orders to the node and gossip them to the network.
    * @returns number of new valid orders added
    */
-  public async addOrders(orders: OrderJSON[]) {
+  public async addOrders(orders: OrderJSON[], pin = true, validate = true) {
     if (!this.running) throw ErrorNodeNotRunning
     let numAdded = 0
     let numValid = 0
     for (const order of orders) {
       try {
-        if (
-          await exceedsMaxOrderLimits(
-            order,
-            this.prisma,
-            this.logger,
-            this.opts
-          )
-        )
-          return numValid
-        const [isAdded, metadata] = await addOrder(
-          this.prisma,
-          this.validator,
-          order,
-          true
-        )
+        if (await exceedsMaxOrderLimits(order, this)) return numValid
+        const [isAdded, metadata] = await addOrder(this, order, pin, validate)
         const { isValid, lastValidatedBlockNumber, lastValidatedBlockHash } =
           metadata
         if (isAdded === true) numAdded++
         if (metadata.isValid) numValid++
         if (isAdded && isValid) {
+          const orderHash = deriveOrderHash(order)
+          // await this.libp2p.contentRouting.provide(prefixedStrToBuf(orderHash))
           const event = {
             event: OrderEvent.NEW,
-            orderHash: deriveOrderHash(order),
+            orderHash,
             order,
             blockNumber: lastValidatedBlockNumber ?? '0',
             blockHash: lastValidatedBlockHash ?? ethers.constants.HashZero,
           }
-          await this._publishEvent(event)
+          await this.publishEvent(event)
         }
-        this.logger.info(
-          `Added ${numAdded} new order${
-            numAdded === 1 ? '' : 's'
-          }, ${numValid} valid`
-        )
       } catch (error: any) {
         this.logger.error(`Error adding order: ${error.message ?? error}`)
       }
     }
+    this.logger.info(
+      `Added ${numAdded} new order${
+        numAdded === 1 ? '' : 's'
+      }, ${numValid} valid`
+    )
     return numValid
   }
 
   /**
    * Gossips an order event to the network.
    */
-  private async _publishEvent(event: GossipsubEvent) {
-    await publishEvent(event, this.gossipsub, this.logger)
+  public async publishEvent(event: GossipsubEvent) {
+    await publishEvent(event, this.libp2p.pubsub, this.logger)
   }
 
   /**
@@ -647,11 +722,11 @@ export class SeaportGossipNode {
   ) {
     if (!this.running) throw ErrorNodeNotRunning
     if (!isValidAddress(address)) return false
-    this.gossipsub.addEventListener(
+    ;(this.libp2p.pubsub as GossipSub).addEventListener(
       'gossipsub:message',
       this._handleGossipsubMessage(address, _onGossipsubEvent).bind(this)
     )
-    this.gossipsub.subscribe(address)
+    this.libp2p.pubsub.subscribe(address)
     this.logger.info(`Subscribed to gossipsub for collection ${short(address)}`)
     return true
   }
@@ -701,29 +776,18 @@ export class SeaportGossipNode {
       if (orderEvent === OrderEvent.COUNTER_INCREMENTED) {
         // TODO: Accept message if counter is equal to order.counter on blockHash,
         //       otherwise reject
-        acceptance = MessageAcceptance.Accept
+        acceptance = TopicValidatorResult.Accept
         await this.seaportListener._onCounterIncrementedEvent(
           order.counter,
           order.offerer,
+          false,
           false
         )
       } else {
         // Try adding order to db
         try {
-          if (
-            await exceedsMaxOrderLimits(
-              order,
-              this.prisma,
-              this.logger,
-              this.opts
-            )
-          )
-            return
-          const [isAdded, metadata] = await addOrder(
-            this.prisma,
-            this.validator,
-            order
-          )
+          if (await exceedsMaxOrderLimits(order, this)) return
+          const [isAdded, metadata] = await addOrder(this, order)
           const { isValid } = metadata
           if (
             orderEvent === OrderEvent.INVALIDATED ||
@@ -732,27 +796,29 @@ export class SeaportGossipNode {
             if (isValid === true) {
               // If the order is now valid, check that it was invalid
               // on the INVALIDATED/CANCELLED event for message acceptance
-              acceptance = MessageAcceptance.Accept
-              // TODO: set to MessageAcceptance.Reject if isValid on gossiped blockHash,
+              acceptance = TopicValidatorResult.Accept
+              // TODO: set to TopicValidatorResult.Reject if isValid on gossiped blockHash,
               //       and rebroadcast as OrderEvent.VALIDATED
               // orderEvent = OrderEvent.VALIDATED
             } else {
-              acceptance = MessageAcceptance.Accept
+              acceptance = TopicValidatorResult.Accept
             }
           } else if (orderEvent === OrderEvent.FULFILLED) {
             // TODO: accept if there was indeed a fulfilled event at the blockHash
-            acceptance = MessageAcceptance.Accept
+            acceptance = TopicValidatorResult.Accept
 
-            await (this.seaportListener as any)._onFulfilledEvent(
+            await this.seaportListener._onFulfilledEvent(
               orderHash,
-              order.offer,
-              order.consideration
+              order.offer as any,
+              order.consideration as any,
+              false,
+              false
             )
           } else {
             acceptance =
               isValid === true
-                ? MessageAcceptance.Accept
-                : MessageAcceptance.Reject
+                ? TopicValidatorResult.Accept
+                : TopicValidatorResult.Reject
           }
           if (
             [
@@ -785,19 +851,21 @@ export class SeaportGossipNode {
               order
             )} (msgId ${short(msgId)}): ${error.message ?? error}`
           )
-          acceptance = MessageAcceptance.Reject
+          acceptance = TopicValidatorResult.Reject
         }
       }
 
-      this.gossipsub.reportMessageValidationResult(
+      ;(this.libp2p.pubsub as GossipSub).reportMessageValidationResult(
         msgId,
         propagationSource,
         acceptance
       )
 
-      if (acceptance === MessageAcceptance.Accept) {
-        await this._publishEvent(event)
+      if (acceptance === TopicValidatorResult.Accept) {
+        await this.publishEvent(event)
       }
+
+      this.metrics?.seaportEvents.inc({ event: OrderEvent[orderEvent] })
     }
   }
 
@@ -806,11 +874,11 @@ export class SeaportGossipNode {
    */
   public gossipsubUnsubscribe(address: Address) {
     if (!this.running) throw ErrorNodeNotRunning
-    if (!(address in this.gossipsub.getTopics())) {
+    if (!(address in this.libp2p.pubsub.getTopics())) {
       this.logger.warn(`No active subscription found for ${address}`)
       return false
     }
-    this.gossipsub.unsubscribe(address)
+    this.libp2p.pubsub.unsubscribe(address)
     this.logger.info(`Unsubscribed from gossipsub for topic ${address}`)
     return true
   }
@@ -897,11 +965,17 @@ export class SeaportGossipNode {
   /**
    * Emit a log on peer connect.
    */
-  private _onPeerConnect(event: CustomEvent) {
+  private async _onPeerConnect(event: CustomEvent) {
     const connection = event.detail
     this.logger.info(
       `Connected to peer ${short(connection.remotePeer.toString())}`
     )
+
+    if (this.opts.getAllOrdersFromPeers) {
+      for (const address of this.opts.collectionAddresses) {
+        await this._getAllOrdersFromPeer(connection.remotePeer, address)
+      }
+    }
   }
 
   /**

@@ -9,8 +9,8 @@
     "src",
     "prisma"
   ],
-  "engines" : { 
-    "node" : ">=16.15.1"
+  "engines": {
+    "node": ">=16.15.1"
   },
   "type": "module",
   "types": "./dist/index.d.ts",
@@ -43,16 +43,17 @@
     "seed": "ts-node-esm prisma/seed.ts"
   },
   "dependencies": {
-    "@chainsafe/libp2p-gossipsub": "^4.1.1",
-    "@chainsafe/libp2p-noise": "^8.0.1",
+    "@chainsafe/libp2p-gossipsub": "^5.2.1",
+    "@chainsafe/libp2p-noise": "^10.2.0",
     "@chainsafe/ssz": "^0.9.2",
     "@graphql-yoga/node": "^2.13.13",
     "@libp2p/interfaces": "^3.0.3",
-    "@libp2p/kad-dht": "^3.0.5",
-    "@libp2p/mplex": "^5.2.4",
+    "@libp2p/kad-dht": "^6.0.1",
+    "@libp2p/mplex": "^7.1.0",
     "@libp2p/peer-id": "^1.1.16",
     "@libp2p/peer-id-factory": "^1.0.18",
-    "@libp2p/websockets": "^3.0.4",
+    "@libp2p/prometheus-metrics": "^1.1.2",
+    "@libp2p/websockets": "^5.0.0",
     "@multiformats/multiaddr": "^11.0.0",
     "@opensea/seaport-order-validator": "^0.1.1",
     "@opensea/stream-js": "^0.0.21-rc.1",
@@ -65,7 +66,7 @@
     "graphql-fields": "^2.0.3",
     "graphql-scalars": "^1.18.0",
     "it-pipe": "^2.0.4",
-    "libp2p": "^0.39.2",
+    "libp2p": "0.40.0-bae32ba",
     "merkletreejs": "^0.3.3",
     "node-fetch": "^3.2.10",
     "prom-client": "^14.1.0",

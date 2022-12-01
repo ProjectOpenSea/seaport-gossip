@@ -1,9 +1,12 @@
 import { EventType, OpenSeaStreamClient } from '@opensea/stream-js'
-import { BigNumber } from 'ethers'
+import { BigNumber, ethers } from 'ethers'
 import fetch from 'node-fetch'
 import { WebSocket } from 'ws'
 
+import { addOrder, exceedsMaxOrderLimits } from '../query/order.js'
 import { RateLimit, short } from '../util/helpers.js'
+import { deriveOrderHash } from '../util/order.js'
+import { AuctionType, OrderEvent } from '../util/types.js'
 
 import type { SeaportGossipNode } from '../node.js'
 import type { Address, ItemType, OrderJSON, OrderType } from '../util/types.js'
@@ -14,7 +17,6 @@ import type {
   ItemReceivedOfferEventPayload,
 } from '@opensea/stream-js'
 import type { RequestInit } from 'node-fetch'
-import type winston from 'winston'
 
 enum OpenSeaOrderType {
   LISTINGS,
@@ -23,7 +25,6 @@ enum OpenSeaOrderType {
 
 interface IngestorOpts {
   node: SeaportGossipNode
-  logger: winston.Logger
 }
 
 interface OpenSeaOfferItem {
@@ -45,6 +46,7 @@ interface OpenSeaOrder {
   listing_time: number
   expiration_time: number
   order_hash: string
+  order_type: string
   protocol_data: {
     parameters: {
       offerer: string
@@ -66,12 +68,10 @@ interface OpenSeaOrder {
 
 export class OpenSeaOrderIngestor {
   private node: SeaportGossipNode
-  private logger: winston.Logger
   private client: OpenSeaStreamClient
 
   private running = false
 
-  private OPENSEA_API_KEY: string
   private CONTRACT_ENDPOINT = 'https://api.opensea.io/api/v1/asset_contract/'
   private ORDERS_ENDPOINT = 'https://api.opensea.io/v2/orders/ethereum/seaport/'
   private LISTINGS_ENDPOINT = `${this.ORDERS_ENDPOINT}listings`
@@ -83,10 +83,8 @@ export class OpenSeaOrderIngestor {
 
   constructor(opts: IngestorOpts) {
     this.node = opts.node
-    this.logger = opts.logger
-    this.OPENSEA_API_KEY = (this.node as any).opts.openSeaAPIKey
     this.client = new OpenSeaStreamClient({
-      token: this.OPENSEA_API_KEY,
+      token: this.node.opts.openSeaAPIKey,
       connectOptions: {
         transport: WebSocket,
       },
@@ -94,9 +92,9 @@ export class OpenSeaOrderIngestor {
   }
 
   public async start() {
-    this.logger.info('OpenSea Ingestor: Starting...')
+    this.node.logger.info('OpenSea Ingestor: Starting...')
     this.running = true
-    const collectionAddresses = (this.node as any).opts.collectionAddresses
+    const collectionAddresses = this.node.opts.collectionAddresses
     for (const address of collectionAddresses) {
       const slug = await this._getCollectionSlug(address)
       if (slug === undefined) continue
@@ -126,11 +124,6 @@ export class OpenSeaOrderIngestor {
       event.payload.item.nft_id.split('/')
     if (chain !== 'ethereum') return
     const orderHash = event.payload.order_hash
-    let log = `OpenSea Ingestor: New event ${
-      event.event_type
-    } for collection ${short(collectionAddress)}, order hash: ${short(
-      orderHash
-    )}`
     const orderType =
       event.event_type === EventType.ITEM_LISTED
         ? OpenSeaOrderType.LISTINGS
@@ -142,13 +135,36 @@ export class OpenSeaOrderIngestor {
       orderType
     )
     if (order === undefined) return
-    const added = await this.node.addOrders([order])
-    if (added === 1) {
-      log += '. Added valid order to db.'
+    if (await exceedsMaxOrderLimits(order, this.node)) return
+    const [isAdded, metadata] = await addOrder(
+      this.node,
+      order,
+      false,
+      false,
+      order.auctionType
+    )
+    let log = `OpenSea Ingestor: New event ${
+      event.event_type
+    } for collection ${short(collectionAddress)}, order hash: ${short(
+      orderHash
+    )}`
+    if (isAdded) {
+      log += '. Added order to db.'
     } else {
-      log += '. Order not added to db.'
+      log += `. Order not added to db (${
+        metadata.isValid ? 'valid, already existed' : 'invalid'
+      }).`
     }
-    this.logger.info(log)
+    this.node.logger.info(log)
+    const gossipsubEvent = {
+      event: OrderEvent.NEW,
+      orderHash: deriveOrderHash(order),
+      order,
+      blockNumber: metadata.lastValidatedBlockNumber ?? '0',
+      blockHash: metadata.lastValidatedBlockHash ?? ethers.constants.HashZero,
+    }
+    await this.node.publishEvent(gossipsubEvent)
+    this.node.metrics?.ordersIngestedOpenSea.inc()
   }
 
   private async _getOrder(
@@ -178,15 +194,20 @@ export class OpenSeaOrderIngestor {
       if (order === undefined) return undefined
       return this._orderToOrderJSON(order)
     } catch (error: any) {
-      this.logger.error(
+      this.node.logger.error(
         `Error fetching order from OpenSea: ${error.message ?? error}`
       )
     }
   }
 
-  private _orderToOrderJSON(order: OpenSeaOrder): OrderJSON {
+  private _orderToOrderJSON(
+    order: OpenSeaOrder
+  ): OrderJSON & { auctionType: AuctionType } {
     const { parameters, signature } = order.protocol_data
     delete (parameters as any).totalOriginalConsiderationItems
+    let auctionType = AuctionType.BASIC
+    if (order.order_type === 'english') auctionType = AuctionType.ENGLISH
+    if (order.order_type === 'dutch') auctionType = AuctionType.DUTCH
     return {
       ...parameters,
       startTime: Number(parameters.startTime),
@@ -194,6 +215,7 @@ export class OpenSeaOrderIngestor {
       salt: BigNumber.from(parameters.salt).toString(),
       signature,
       chainId: '1',
+      auctionType,
     }
   }
 
@@ -207,7 +229,7 @@ export class OpenSeaOrderIngestor {
         throw new Error('slug not present in returned collection metadata')
       return data.collection.slug
     } catch (error: any) {
-      this.logger.error(
+      this.node.logger.error(
         `Error fetching collection slug for ${address} from OpenSea: ${
           error.message ?? error
         }`
@@ -223,7 +245,7 @@ export class OpenSeaOrderIngestor {
       ...opts,
       headers: {
         accept: 'application/json',
-        'X-API-KEY': this.OPENSEA_API_KEY,
+        'X-API-KEY': this.node.opts.openSeaAPIKey,
         ...opts.headers,
       },
     })
@@ -231,7 +253,7 @@ export class OpenSeaOrderIngestor {
 
   public stop() {
     if (!this.running) return
-    this.logger.info('OpenSea Ingestor: Stopping...')
+    this.node.logger.info('OpenSea Ingestor: Stopping...')
     this.client.disconnect()
     this.abortController.abort()
     this.running = false

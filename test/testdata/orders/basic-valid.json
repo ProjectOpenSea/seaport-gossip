@@ -132,7 +132,7 @@
     "offer": [
       {
         "itemType": 1,
-        "token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "token": "0xc03aaa39b223fe8d0a0e5c4f27ead9083c756cc3",
         "identifierOrCriteria": "0",
         "startAmount": "200000000000000000",
         "endAmount": "200000000000000000"
@@ -149,7 +149,7 @@
       },
       {
         "itemType": 1,
-        "token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "token": "0xc03aaa39b223fe8d0a0e5c4f27ead9083c756cc3",
         "identifierOrCriteria": "0",
         "startAmount": "5000000000000000",
         "endAmount": "5000000000000000",

@@ -40,23 +40,23 @@ describe('Listener', () => {
     await node.addOrders([order])
 
     const getOrderMetadata = async () =>
-      (node as any).prisma.orderMetadata.findFirst({
+      node.prisma.orderMetadata.findFirst({
         where: { orderHash },
       })
 
     // COUNTER_INCREMENTED
     let metadata = await getOrderMetadata()
-    expect(metadata.isValid).to.be.true
+    expect(metadata?.isValid).to.be.true
     await (node as any).seaportListener._onCounterIncrementedEvent(
       1,
       order.offerer,
       true
     )
     metadata = await getOrderMetadata()
-    expect(metadata.isValid).to.be.false
+    expect(metadata?.isValid).to.be.false
 
     const setOrderToValid = async () =>
-      (node as any).prisma.orderMetadata.update({
+      node.prisma.orderMetadata.update({
         where: { orderHash },
         data: { isValid: true },
       })
@@ -65,43 +65,54 @@ describe('Listener', () => {
 
     // FULFILLED
     metadata = await getOrderMetadata()
-    expect(metadata.isValid).to.be.true
-    expect(metadata.isFullyFulfilled).to.be.false
-    expect(metadata.lastFulfilledAt).to.be.null
-    expect(metadata.lastFulfilledPrice).to.be.null
+    expect(metadata?.isValid).to.be.true
+    expect(metadata?.isFullyFulfilled).to.be.false
+    expect(metadata?.lastFulfilledAt).to.be.null
+    expect(metadata?.lastFulfilledPrice).to.be.null
     await (node as any).seaportListener._onFulfilledEvent(
       orderHash,
-      order.offer,
-      order.consideration
+      order.offer.map((o) => ({
+        itemType: o.itemType,
+        token: o.token,
+        identifier: o.identifierOrCriteria,
+        amount: o.startAmount,
+      })),
+      order.consideration.map((c) => ({
+        itemType: c.itemType,
+        token: c.token,
+        identifier: c.identifierOrCriteria,
+        amount: c.startAmount,
+        recipient: c.recipient,
+      }))
     )
     metadata = await getOrderMetadata()
-    expect(metadata.isFullyFulfilled).to.be.true
-    expect(metadata.lastFulfilledAt).to.eq('1337')
-    expect(metadata.lastFulfilledPrice).to.not.be.null
-    expect(metadata.isValid).to.be.false
+    expect(metadata?.isFullyFulfilled).to.be.true
+    expect(metadata?.lastFulfilledAt).to.eq('1337')
+    expect(metadata?.lastFulfilledPrice).to.not.be.null
+    expect(metadata?.isValid).to.be.false
 
     await setOrderToValid()
 
     // CANCELLED
     metadata = await getOrderMetadata()
-    expect(metadata.isValid).to.be.true
+    expect(metadata?.isValid).to.be.true
     await (node as any).seaportListener._onCancelledEvent(
       orderHash,
       order.offerer,
       order.zone
     )
     metadata = await getOrderMetadata()
-    expect(metadata.isValid).to.be.false
+    expect(metadata?.isValid).to.be.false
 
     // VALIDATED
     metadata = await getOrderMetadata()
-    expect(metadata.isValid).to.be.false
+    expect(metadata?.isValid).to.be.false
     await (node as any).seaportListener._onValidatedEvent(
       orderHash,
       order.offerer,
       order.zone
     )
     metadata = await getOrderMetadata()
-    expect(metadata.isValid).to.be.true
+    expect(metadata?.isValid).to.be.true
   })
 })

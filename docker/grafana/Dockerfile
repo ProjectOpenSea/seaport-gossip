@@ -1,5 +1,4 @@
-# Same version as our ansible deployments, to minimize the diff in the dashboard on export
-FROM grafana/grafana:8.4.2
+FROM grafana/grafana:9.3.0
 
 # Datasource URL is configured with ENV variables
 COPY datasource.yml /etc/grafana/provisioning/datasources/datasource.yml

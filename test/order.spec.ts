@@ -9,14 +9,18 @@ import {
   compareOrdersByCurrentPrice,
   deriveOrderHash,
 } from '../dist/util/order.js'
-import { OrderFilter, OrderSort, Side } from '../dist/util/types.js'
+import {
+  AuctionType,
+  OrderFilter,
+  OrderSort,
+  Side,
+} from '../dist/util/types.js'
 
 import invalidBasicOrders from './testdata/orders/basic-invalid.json' assert { type: 'json' }
 import validBasicOrders from './testdata/orders/basic-valid.json' assert { type: 'json' }
 import {
-  orderIsAuction,
   randomOrder,
-  setOrderAsAuction,
+  setOrderAuctionType,
   simulateOrderFulfillment,
   simulateOrderValidation,
   truncateTables,
@@ -25,7 +29,6 @@ import { MockProvider } from './util/provider.js'
 
 import type { GetOrdersOpts } from '../dist/query/order.js'
 import type { OrderWithItems } from '../dist/util/types.js'
-import type { PrismaClient } from '@prisma/client'
 
 chai.use(chaiAsPromised)
 
@@ -35,7 +38,6 @@ describe('Orders', () => {
     logLevel: 'off',
   }
   let node = new SeaportGossipNode(opts)
-  const prisma: PrismaClient = (node as any).prisma
 
   beforeEach(async () => {
     await node.start()
@@ -61,7 +63,7 @@ describe('Orders', () => {
     )
     expect(orders.length).to.eq(1)
     orders = await node.getOrders('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2')
-    expect(orders.length).to.eq(3)
+    expect(orders.length).to.eq(2)
 
     /* Side.BUY */
     orders = await node.getOrders(
@@ -126,7 +128,7 @@ describe('Orders', () => {
       // Default sort: NEWEST
       let getOpts: GetOrdersOpts = { side }
       const ordersDefaultSort = await node.getOrders(contractAddr, getOpts)
-      let orderMetadata = await prisma.orderMetadata.findMany({
+      let orderMetadata = await node.prisma.orderMetadata.findMany({
         where: {
           OR: ordersDefaultSort.map((o) => ({ orderHash: deriveOrderHash(o) })),
         },
@@ -142,7 +144,7 @@ describe('Orders', () => {
 
       getOpts = { side, sort: OrderSort.OLDEST }
       orders = await node.getOrders(contractAddr, getOpts)
-      orderMetadata = await prisma.orderMetadata.findMany({
+      orderMetadata = await node.prisma.orderMetadata.findMany({
         where: {
           OR: ordersDefaultSort.map((o) => ({ orderHash: deriveOrderHash(o) })),
         },
@@ -168,21 +170,21 @@ describe('Orders', () => {
         orders.sort(compareOrdersByCurrentPrice(side, OrderSort.PRICE_DESC))
       )
 
-      let order = await randomOrder(prisma)
-      await simulateOrderFulfillment(prisma, order.hash, '1000000')
+      let order = await randomOrder(node.prisma)
+      await simulateOrderFulfillment(node.prisma, order.hash, '1000000')
       getOpts = { side, sort: OrderSort.RECENTLY_FULFILLED, count: 1 }
       const itemSide = side === Side.BUY ? 'consideration' : 'offer'
       orders = await node.getOrders(order[itemSide][0].token, getOpts)
       expect(orders).to.deep.eq([orderToJSON(order)])
 
-      order = await randomOrder(prisma)
-      await simulateOrderValidation(prisma, order.hash, true)
+      order = await randomOrder(node.prisma)
+      await simulateOrderValidation(node.prisma, order.hash, true)
       getOpts = { side, sort: OrderSort.RECENTLY_VALIDATED, count: 1 }
       orders = await node.getOrders(order[itemSide][0].token, getOpts)
       expect(orders).to.deep.eq([orderToJSON(order)])
 
-      order = await randomOrder(prisma)
-      await simulateOrderFulfillment(prisma, order.hash, '100000000')
+      order = await randomOrder(node.prisma)
+      await simulateOrderFulfillment(node.prisma, order.hash, '100000000')
       getOpts = { side, sort: OrderSort.HIGHEST_LAST_SALE, count: 1 }
       orders = await node.getOrders(order[itemSide][0].token, getOpts)
       expect(orders).to.deep.eq([orderToJSON(order)])
@@ -219,15 +221,14 @@ describe('Orders', () => {
         )
       )
 
-      order = await randomOrder(prisma)
-      await setOrderAsAuction(prisma, order.hash, false)
+      order = await randomOrder(node.prisma)
+      await setOrderAuctionType(node.prisma, order.hash, AuctionType.BASIC)
       getOpts = { side, filter: { [OrderFilter.BUY_NOW]: true } }
       orders = await node.getOrders(order[itemSide][0].token, getOpts)
       expect(orders).to.satisfy((allOrders: OrderWithItems[]) =>
         allOrders.every(
           async (o) =>
-            o.startTime >= timestampNow() &&
-            !(await orderIsAuction(prisma, o.hash))
+            o.startTime >= timestampNow() && o.auctionType === AuctionType.BASIC
         )
       )
 
@@ -243,12 +244,12 @@ describe('Orders', () => {
         allOrders.every(
           async (o) =>
             o.startTime >= timestampNow() &&
-            !(await orderIsAuction(prisma, o.hash)) &&
+            o.auctionType === AuctionType.BASIC &&
             o.offerer === order.offerer
         )
       )
 
-      await setOrderAsAuction(prisma, order.hash, true)
+      await setOrderAuctionType(node.prisma, order.hash, AuctionType.ENGLISH)
       getOpts = {
         side,
         filter: {
@@ -260,7 +261,7 @@ describe('Orders', () => {
         allOrders.every(
           async (o) =>
             o.startTime >= timestampNow() &&
-            (await orderIsAuction(prisma, o.hash))
+            o.auctionType === AuctionType.ENGLISH
         )
       )
 
@@ -276,7 +277,7 @@ describe('Orders', () => {
         allOrders.every(
           async (o) =>
             o.startTime >= timestampNow() &&
-            (await orderIsAuction(prisma, o.hash)) &&
+            o.auctionType === AuctionType.ENGLISH &&
             o.offerer === order.offerer
         )
       )
@@ -314,7 +315,7 @@ describe('Orders', () => {
         allOrders.every(
           async (o) =>
             o.startTime >= timestampNow() &&
-            !(await orderIsAuction(prisma, o.hash)) &&
+            o.auctionType === AuctionType.BASIC &&
             o[itemSide].some((item) => item.token === wethAddress)
         )
       )
@@ -335,7 +336,7 @@ describe('Orders', () => {
         allOrders.every(
           async (o) =>
             o.startTime >= timestampNow() &&
-            !(await orderIsAuction(prisma, o.hash)) &&
+            o.auctionType === AuctionType.BASIC &&
             o.offerer === order.offerer
         )
       )

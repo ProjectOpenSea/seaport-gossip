@@ -73,6 +73,7 @@ export const orderToJSON = (order: OrderWithItems): OrderJSON => {
       : undefined
 
   delete (order as any).hash
+  delete (order as any).auctionType
 
   const json = {
     ...order,

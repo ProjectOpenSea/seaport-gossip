@@ -92,13 +92,13 @@ describe('Gossipsub', () => {
     )
 
     const getOrderMetadata = async (node: SeaportGossipNode) =>
-      (node as any).prisma.orderMetadata.findFirst({
+      node.prisma.orderMetadata.findFirst({
         where: { orderHash },
       })
 
     // COUNTER_INCREMENTED
     let metadata = await getOrderMetadata(node2)
-    expect(metadata.isValid).to.be.true
+    expect(metadata?.isValid).to.be.true
     await (node1 as any).seaportListener._onCounterIncrementedEvent(
       1,
       order.offerer,
@@ -106,10 +106,10 @@ describe('Gossipsub', () => {
     )
     await setTimeout(1000)
     metadata = await getOrderMetadata(node2)
-    expect(metadata.isValid).to.be.false
+    expect(metadata?.isValid).to.be.false
 
     const setOrderToValid = async (node: SeaportGossipNode) =>
-      (node as any).prisma.orderMetadata.update({
+      node.prisma.orderMetadata.update({
         where: { orderHash },
         data: { isValid: true },
       })
@@ -119,28 +119,39 @@ describe('Gossipsub', () => {
 
     // FULFILLED
     metadata = await getOrderMetadata(node2)
-    expect(metadata.isValid).to.be.true
-    expect(metadata.isFullyFulfilled).to.be.false
-    expect(metadata.lastFulfilledAt).to.be.null
-    expect(metadata.lastFulfilledPrice).to.be.null
+    expect(metadata?.isValid).to.be.true
+    expect(metadata?.isFullyFulfilled).to.be.false
+    expect(metadata?.lastFulfilledAt).to.be.null
+    expect(metadata?.lastFulfilledPrice).to.be.null
     await (node1 as any).seaportListener._onFulfilledEvent(
       orderHash,
-      order.offer,
-      order.consideration
+      order.offer.map((o) => ({
+        itemType: o.itemType,
+        token: o.token,
+        identifier: o.identifierOrCriteria,
+        amount: o.startAmount,
+      })),
+      order.consideration.map((c) => ({
+        itemType: c.itemType,
+        token: c.token,
+        identifier: c.identifierOrCriteria,
+        amount: c.startAmount,
+        recipient: c.recipient,
+      }))
     )
     await setTimeout(1000)
     metadata = await getOrderMetadata(node2)
-    expect(metadata.isFullyFulfilled).to.be.true
-    expect(metadata.lastFulfilledAt).to.eq('1337')
-    expect(metadata.lastFulfilledPrice).to.not.be.null
-    expect(metadata.isValid).to.be.false
+    expect(metadata?.isFullyFulfilled).to.be.true
+    expect(metadata?.lastFulfilledAt).to.eq('1337')
+    expect(metadata?.lastFulfilledPrice).to.not.be.null
+    expect(metadata?.isValid).to.be.false
 
     await setOrderToValid(node1)
     await setOrderToValid(node2)
 
     // CANCELLED
     metadata = await getOrderMetadata(node2)
-    expect(metadata.isValid).to.be.true
+    expect(metadata?.isValid).to.be.true
     await (node1 as any).seaportListener._onCancelledEvent(
       orderHash,
       order.offerer,
@@ -148,11 +159,11 @@ describe('Gossipsub', () => {
     )
     await setTimeout(1000)
     metadata = await getOrderMetadata(node2)
-    expect(metadata.isValid).to.be.false
+    expect(metadata?.isValid).to.be.false
 
     // VALIDATED
     metadata = await getOrderMetadata(node2)
-    expect(metadata.isValid).to.be.false
+    expect(metadata?.isValid).to.be.false
     let event = {
       event: OrderEvent.VALIDATED,
       orderHash,
@@ -160,14 +171,14 @@ describe('Gossipsub', () => {
       blockNumber: '1337',
       blockHash: `0x${'2'.repeat(64)}`,
     }
-    await (node1 as any)._publishEvent(event)
+    await node1.publishEvent(event)
     await setTimeout(1000)
     metadata = await getOrderMetadata(node2)
-    expect(metadata.isValid).to.be.true
+    expect(metadata?.isValid).to.be.true
 
     // INVALIDATED
     metadata = await getOrderMetadata(node2)
-    expect(metadata.isValid).to.be.true
+    expect(metadata?.isValid).to.be.true
     event = {
       event: OrderEvent.INVALIDATED,
       orderHash,
@@ -175,9 +186,9 @@ describe('Gossipsub', () => {
       blockNumber: '1337',
       blockHash: `0x${'2'.repeat(64)}`,
     }
-    await (node1 as any)._publishEvent(event)
+    await node1.publishEvent(event)
     await setTimeout(1000)
     metadata = await getOrderMetadata(node2)
-    expect(metadata.isValid).to.be.false
+    expect(metadata?.isValid).to.be.false
   }).timeout(10000)
 })

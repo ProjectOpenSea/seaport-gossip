@@ -3,7 +3,7 @@ import { deriveOrderHash } from './order.js'
 import { encodeGossipsubEvent } from './serialize.js'
 
 import type { GossipsubEvent } from './types.js'
-import type { GossipSub } from '@chainsafe/libp2p-gossipsub'
+import type { PubSub } from '@libp2p/interface-pubsub'
 import type winston from 'winston'
 
 /**
@@ -11,7 +11,7 @@ import type winston from 'winston'
  */
 export const publishEvent = async (
   event: GossipsubEvent,
-  gossipsub: GossipSub,
+  pubsub: PubSub,
   logger: winston.Logger
 ) => {
   const { order } = event
@@ -27,7 +27,7 @@ export const publishEvent = async (
     )
     try {
       const encodedEvent = encodeGossipsubEvent(event)
-      await gossipsub.publish(address, encodedEvent)
+      await pubsub.publish(address, encodedEvent)
     } catch (error: any) {
       if (error.message === 'PublishError.Duplicate') return
       logger.error(

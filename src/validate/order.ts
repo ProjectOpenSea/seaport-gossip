@@ -1,14 +1,15 @@
 import { SeaportOrderValidator } from '@opensea/seaport-order-validator'
 import { ethers } from 'ethers'
 
-import ISeaport from '../contract-abi/Seaport.json' assert { type: 'json' }
 import {
   OPENSEA_FEE_RECIPIENT,
   SHARED_STOREFRONT_LAZY_MINT_ADAPTER,
 } from '../util/constants.js'
 import { orderToJSON } from '../util/convert.js'
 import { deriveOrderHash, isOrderWithItems } from '../util/order.js'
+import { AuctionType, OrderType } from '../util/types.js'
 
+import type { SeaportGossipNode } from '../node.js'
 import type {
   Address,
   OrderJSON,
@@ -16,49 +17,31 @@ import type {
   OrderWithItems,
 } from '../util/types.js'
 import type { ValidationConfigurationStruct } from '@opensea/seaport-order-validator/dist/typechain-types/contracts/lib/SeaportValidator.js'
-import type { PrismaClient } from '@prisma/client'
 import type { BigNumber } from 'ethers'
-import type winston from 'winston'
 
 interface OrderValidationOpts {
-  prisma: PrismaClient
-  seaportAddress: Address
-  web3Provider: ethers.providers.JsonRpcProvider
-  logger: winston.Logger
-  validateOpenSeaFeeRecipient: boolean
-  revalidateBlockDistance: number
+  node: SeaportGossipNode
 }
 
 export class OrderValidator {
-  private prisma: PrismaClient
-  private logger: winston.Logger
-  private seaport: ethers.Contract
-  private provider: ethers.providers.JsonRpcProvider
+  private node: SeaportGossipNode
   private validator: SeaportOrderValidator
   private validationConfiguration: ValidationConfigurationStruct
-  private REVALIDATE_BLOCK_DISTANCE: number
 
   constructor(opts: OrderValidationOpts) {
-    this.prisma = opts.prisma
-    this.logger = opts.logger
-    this.provider = opts.web3Provider
-    this.seaport = new ethers.Contract(
-      opts.seaportAddress,
-      ISeaport,
-      this.provider
-    )
-    this.validator = new SeaportOrderValidator(this.provider)
+    this.node = opts.node
+
+    this.validator = new SeaportOrderValidator(this.node.provider)
     this.validationConfiguration = {
-      primaryFeeRecipient: opts.validateOpenSeaFeeRecipient
+      primaryFeeRecipient: this.node.opts.validateOpenSeaFeeRecipient
         ? OPENSEA_FEE_RECIPIENT
         : ethers.constants.AddressZero,
-      primaryFeeBips: opts.validateOpenSeaFeeRecipient ? 250 : 0,
+      primaryFeeBips: this.node.opts.validateOpenSeaFeeRecipient ? 250 : 0,
       checkCreatorFee: true,
       skipStrictValidation: true,
       shortOrderDuration: 30 * 60, // 30 minutes
       distantOrderExpiration: 60 * 60 * 24 * 7 * 26, // 26 weeks
     }
-    this.REVALIDATE_BLOCK_DISTANCE = opts.revalidateBlockDistance
   }
 
   /**
@@ -80,8 +63,9 @@ export class OrderValidator {
 
     const hash = deriveOrderHash(order)
 
-    const lastBlockNumber = await this.provider.getBlockNumber()
-    const lastBlockHash = (await this.provider.getBlock(lastBlockNumber)).hash
+    const lastBlockNumber = await this.node.provider.getBlockNumber()
+    const lastBlockHash = (await this.node.provider.getBlock(lastBlockNumber))
+      .hash
 
     const errorsAndWarnings: any =
       await this.validator.isValidOrderWithConfiguration(
@@ -122,7 +106,7 @@ export class OrderValidator {
       (code: number) => VALIDATOR_ISSUE_CODES[code]
     )
 
-    this.logger.debug(
+    this.node.logger.debug(
       `${errorsAndWarnings.errors.length} errors and ${
         errorsAndWarnings.warnings.length
       } warnings for order ${hash}: ${JSON.stringify(errorsAndWarnings)}`
@@ -131,23 +115,25 @@ export class OrderValidator {
     if (updateRecordInDB) {
       if (
         errorsAndWarnings.errors.includes('Order fully filled') === true ||
-        errorsAndWarnings.errors.includes('Order cancelled') === true
+        errorsAndWarnings.errors.includes('Order cancelled') === true ||
+        errorsAndWarnings.errors.includes('Order expired') === true
       ) {
-        const metadata = await this.prisma.orderMetadata.findFirst({
+        const metadata = await this.node.prisma.orderMetadata.findFirst({
           where: { orderHash: hash },
         })
         if (
           metadata !== null &&
-          Number(metadata.lastValidatedBlockNumber) <
-            lastBlockNumber - this.REVALIDATE_BLOCK_DISTANCE
+          Number(metadata.lastValidatedBlockNumber) <=
+            lastBlockNumber - this.node.opts.revalidateBlockDistance
         ) {
-          this.logger.debug(
-            `Deleting stale order ${hash} for being fully filled or cancelled`
+          this.node.logger.debug(
+            `Deleting stale order ${hash} for being fully filled, cancelled, or expired`
           )
-          await this.prisma.order.delete({ where: { hash } })
+          await this.node.prisma.order.delete({ where: { hash } })
+          this.node.metrics?.ordersDeleted.inc()
         }
       } else {
-        await this.prisma.orderMetadata.update({
+        await this.node.prisma.orderMetadata.update({
           where: { orderHash: hash },
           data: {
             isValid,
@@ -156,6 +142,18 @@ export class OrderValidator {
           },
         })
       }
+    }
+
+    if (isValid) {
+      this.node.metrics?.ordersValidated.inc()
+    } else {
+      this.node.metrics?.ordersInvalidated.inc()
+    }
+    for (const issue of [
+      ...errorsAndWarnings.errors,
+      ...errorsAndWarnings.warnings,
+    ]) {
+      this.node.metrics?.orderValidationErrorsAndWarnings.inc({ issue })
     }
 
     return [
@@ -167,25 +165,35 @@ export class OrderValidator {
   }
 
   public async isFullyFulfilled(hash: string) {
-    const status: OrderStatus = await this.seaport.getOrderStatus(hash)
+    const status: OrderStatus = await this.node.seaport.getOrderStatus(hash)
     const [totalFilled, totalSize] = status.slice(2) as [BigNumber, BigNumber]
     return !totalFilled.isZero() && totalFilled.eq(totalSize)
   }
 
   /**
-   * Checks if order is restricted and zone is EOA, then the order is likely an auction.
-   * In the future we can have a whitelist of "auction zones" as they are created.
+   * Checks if order is restricted and zone is EOA, then the order is likely an english auction.
    */
-  public async isAuction(order: OrderJSON) {
-    const isContract = await this._isContract(order.zone)
-    if (order.orderType > 1 && !isContract) {
-      return true
+  public async auctionType(order: OrderJSON): Promise<AuctionType> {
+    if (
+      order.orderType === OrderType.FULL_RESTRICTED ||
+      order.orderType === OrderType.PARTIAL_RESTRICTED
+    ) {
+      const isContract = await this._isContract(order.zone)
+      if (!isContract) return AuctionType.ENGLISH
     }
-    return false
+    if (
+      [...order.offer, ...order.consideration].every(
+        (c) => c.startAmount === c.endAmount
+      )
+    ) {
+      return AuctionType.BASIC
+    } else {
+      return AuctionType.DUTCH
+    }
   }
 
   private async _isContract(address: Address) {
-    const code = await this.provider.getCode(address)
+    const code = await this.node.provider.getCode(address)
     return code.length > 2 // '0x'
   }
 }

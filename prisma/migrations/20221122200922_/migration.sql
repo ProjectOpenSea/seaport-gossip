@@ -40,7 +40,8 @@ CREATE TABLE "Order" (
     "numerator" TEXT,
     "denominator" TEXT,
     "extraData" TEXT,
-    "chainId" TEXT NOT NULL
+    "chainId" TEXT NOT NULL,
+    "auctionType" INTEGER NOT NULL
 );
 
 -- CreateTable
@@ -48,7 +49,6 @@ CREATE TABLE "OrderMetadata" (
     "orderHash" TEXT NOT NULL PRIMARY KEY,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "isValid" BOOLEAN NOT NULL,
-    "isAuction" BOOLEAN NOT NULL,
     "isFullyFulfilled" BOOLEAN NOT NULL,
     "lastFulfilledAt" TEXT,
     "lastFulfilledPrice" TEXT,

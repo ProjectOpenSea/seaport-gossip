@@ -1,9 +1,8 @@
-import { peerIdFromString } from '@libp2p/peer-id'
 import { createFromProtobuf } from '@libp2p/peer-id-factory'
-import { multiaddr } from '@multiformats/multiaddr'
 import { Order } from '@prisma/client'
 
 import { DEFAULT_SEAPORT_ADDRESS } from './constants.js'
+import { parseBootnodes } from './helpers.js'
 import { Color } from './log.js'
 
 import type { PeerId } from '@libp2p/interface-peer-id'
@@ -53,6 +52,18 @@ export interface SeaportGossipNodeOpts {
    * Default: 4000
    */
   graphqlPort?: number
+
+  /**
+   * Whether to report metrics to Prometheus
+   * Default: false
+   */
+  metrics?: boolean
+
+  /**
+   * The http server port to use for reporting metrics on `/metrics`
+   * Default: 8088
+   */
+  metricsServerPort?: number
 
   /**
    * Bootnodes to connect to on start.
@@ -142,12 +153,6 @@ export interface SeaportGossipNodeOpts {
   openSeaAPIKey?: string
 
   /**
-   * Enable metrics by passing a Prometheus IP and port (e.g. `127.0.0.1:9090`)
-   * Default: disabled
-   */
-  metricsAddress?: string | null
-
-  /**
    * Optionally pass a custom {@link winston.Logger}
    */
   logger?: winston.Logger | null
@@ -188,62 +193,91 @@ export interface SeaportGossipNodeOpts {
    * Default: 25 blocks (~5 minutes)
    */
   revalidateBlockDistance?: number
+
+  /**
+   * Whether to get all orders for subscribed collections when connecting to new peers.
+   * Default: false
+   */
+  getAllOrdersFromPeers?: boolean
+
+  /**
+   * Whether to require orders must include OpenSee as a fee recipient.
+   * Default: true
+   */
+  validateOpenSeaFeeRecipient?: boolean
 }
+
+/** Env vars */
+const {
+  WEB3_PROVIDER,
+  OPENSEA_API_KEY,
+  SEAPORT_ADDRESS,
+  SEAPORT_GOSSIP_BOOTNODES,
+  SEAPORT_GOSSIP_COLLECTION_ADDRESSES,
+  SEAPORT_GOSSIP_DATADIR,
+  SEAPORT_GOSSIP_GET_ALL_ORDERS_FROM_PEERS,
+  SEAPORT_GOSSIP_GRAPHQL_PORT,
+  SEAPORT_GOSSIP_HOSTNAME,
+  SEAPORT_GOSSIP_INGEST_OPENSEA_ORDERS,
+  SEAPORT_GOSSIP_LOG_LEVEL,
+  SEAPORT_GOSSIP_METRICS,
+  SEAPORT_GOSSIP_METRICS_SERVER_PORT,
+  SEAPORT_GOSSIP_PEER_ID_PROTOBUF,
+  SEAPORT_GOSSIP_PORT,
+  SEAPORT_GOSSIP_VALIDATE_OPENSEA_FEE_RECIPIENT,
+} = process.env
 
 /**
  * Default options for initializing a node when unspecified in {@link SeaportGossipNodeOpts}.
  */
 export const seaportGossipNodeDefaultOpts = {
-  web3Provider: process.env.WEB3_PROVIDER ?? '',
-  datadir: process.env.SEAPORT_GOSSIP_DATADIR ?? './datadirs/datadir',
+  web3Provider: WEB3_PROVIDER ?? '',
+  datadir: SEAPORT_GOSSIP_DATADIR ?? './datadirs/datadir',
   peerId:
-    process.env.SEAPORT_GOSSIP_PEER_ID_PROTOBUF !== undefined
+    SEAPORT_GOSSIP_PEER_ID_PROTOBUF !== undefined
       ? await createFromProtobuf(
-          Buffer.from(process.env.SEAPORT_GOSSIP_PEER_ID_PROTOBUF, 'hex')
+          Buffer.from(SEAPORT_GOSSIP_PEER_ID_PROTOBUF, 'hex')
         )
       : null,
-  hostname: process.env.SEAPORT_GOSSIP_HOSTNAME ?? '0.0.0.0',
-  port:
-    process.env.SEAPORT_GOSSIP_PORT !== undefined
-      ? Number(process.env.SEAPORT_GOSSIP_PORT)
-      : 8998,
+  hostname: SEAPORT_GOSSIP_HOSTNAME ?? '0.0.0.0',
+  port: SEAPORT_GOSSIP_PORT !== undefined ? Number(SEAPORT_GOSSIP_PORT) : 8998,
   graphqlPort:
-    process.env.SEAPORT_GOSSIP_GRAPHQL_PORT !== undefined
-      ? Number(process.env.SEAPORT_GOSSIP_GRAPHQL_PORT)
+    SEAPORT_GOSSIP_GRAPHQL_PORT !== undefined
+      ? Number(SEAPORT_GOSSIP_GRAPHQL_PORT)
       : 4000,
+  metrics: SEAPORT_GOSSIP_METRICS === 'true' ? true : false,
+  metricsServerPort:
+    SEAPORT_GOSSIP_METRICS_SERVER_PORT !== undefined
+      ? Number(SEAPORT_GOSSIP_METRICS_SERVER_PORT)
+      : 8088,
   bootnodes:
-    process.env.SEAPORT_GOSSIP_BOOTNODES !== undefined
-      ? process.env.SEAPORT_GOSSIP_BOOTNODES.split(',')
-          .map((b) => b.split('/p2p/').reverse())
-          .map((b: any) => {
-            b[0] = peerIdFromString(b[0])
-            b[1] = [multiaddr(b[1])]
-            return b as [PeerId, Multiaddr[]]
-          })
+    SEAPORT_GOSSIP_BOOTNODES !== undefined
+      ? parseBootnodes(SEAPORT_GOSSIP_BOOTNODES)
       : [],
   minConnections: 5,
   maxConnections: 15,
-  collectionAddresses: process.env.COLLECTION_ADDRESSES?.split(',') ?? [],
+  collectionAddresses: SEAPORT_GOSSIP_COLLECTION_ADDRESSES?.split(',') ?? [],
   maxOrders: 100_000,
   maxOrdersPerOfferer: 100,
   maxOrderStartTime: 14,
   maxOrderEndTime: 180,
   maxOrderHistory: 7,
   maxRPCRequestsPerDay: 25_000,
-  seaportAddress: process.env.SEAPORT_ADDRESS ?? DEFAULT_SEAPORT_ADDRESS,
+  seaportAddress: SEAPORT_ADDRESS ?? DEFAULT_SEAPORT_ADDRESS,
   ingestOpenSeaOrders:
-    process.env.INGEST_OPENSEA_ORDERS !== undefined
-      ? Boolean(process.env.INGEST_OPENSEA_ORDERS)
-      : false,
-  openSeaAPIKey: process.env.OPENSEA_API_KEY ?? '',
-  metricsAddress: null,
+    SEAPORT_GOSSIP_INGEST_OPENSEA_ORDERS === 'true' ? true : false,
+  openSeaAPIKey: OPENSEA_API_KEY ?? '',
   logger: null,
-  logLevel: process.env.LOG_LEVEL ?? 'info',
+  logLevel: SEAPORT_GOSSIP_LOG_LEVEL ?? 'info',
   logColor: Color.FG_WHITE,
   clientMode: true,
   customLibp2pConfig: {},
   revalidateInterval: 60,
   revalidateBlockDistance: 25,
+  getAllOrdersFromPeers:
+    SEAPORT_GOSSIP_GET_ALL_ORDERS_FROM_PEERS === 'true' ? true : false,
+  validateOpenSeaFeeRecipient:
+    SEAPORT_GOSSIP_VALIDATE_OPENSEA_FEE_RECIPIENT === 'false' ? false : true,
 }
 
 /**
@@ -318,6 +352,12 @@ export enum SeaportEvent {
   ORDER_CANCELLED = 'OrderCancelled',
   ORDER_VALIDATED = 'OrderValidated',
   COUNTER_INCREMENTED = 'CounterIncremented',
+}
+
+export enum AuctionType {
+  BASIC,
+  ENGLISH,
+  DUTCH,
 }
 
 /**

@@ -1,7 +1,11 @@
+import { peerIdFromString } from '@libp2p/peer-id'
+import { multiaddr } from '@multiformats/multiaddr'
 import { Sema } from 'async-sema'
 import { ethers } from 'ethers'
 
 import type { OrderJSON } from './types.js'
+import type { PeerId } from '@libp2p/interface-peer-id'
+import type { Multiaddr } from '@multiformats/multiaddr'
 
 /** The zero address */
 export const zeroAddress = `0x${'0'.repeat(40)}`
@@ -97,3 +101,16 @@ export function RateLimit(
     setTimeout(() => sema.release(), delay)
   }
 }
+
+/**
+ * Parse a bootnodes string
+ */
+export const parseBootnodes = (bootnodes: string) =>
+  bootnodes
+    .split(',')
+    .map((b) => b.split('/p2p/').reverse())
+    .map((b: any) => {
+      b[0] = peerIdFromString(b[0])
+      b[1] = [multiaddr(b[1])]
+      return b as [PeerId, Multiaddr[]]
+    })

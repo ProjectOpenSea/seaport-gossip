@@ -22,7 +22,6 @@ import type { SeaportGossipNode } from './node.js'
 import type { GetOrdersOpts } from './query/order.js'
 import type { Address, OrderJSON } from './util/types.js'
 import type { PeerId } from '@libp2p/interface-peer-id'
-import type winston from 'winston'
 
 /**
  * Utils
@@ -58,7 +57,6 @@ const decodeOrderQuery = (data: Uint8Array): OrderQuery => {
       ...orderQuery.opts,
       filter: {}, // todo implement
       onlyCount: false,
-      validate: false,
     },
   }
 }
@@ -239,11 +237,11 @@ export const criteriaDecode = (data: Uint8Array) => {
  */
 export const handleProtocol = async (
   node: SeaportGossipNode,
-  logger: winston.Logger,
   peer: PeerId,
   code: number,
   message: Uint8Array
 ): Promise<Uint8Array | undefined> => {
+  const { logger } = node
   const shortPeerId = short(peer.toString())
   const protocol = protocols.find((p) => p.code === code)
   if (protocol === undefined)
@@ -263,6 +261,7 @@ export const handleProtocol = async (
           orders.push(order)
         }
       }
+      node.metrics?.ordersSent.inc({ peerId: peer.toString() }, orders.length)
       return ordersEncode(reqId, orders)
     }
     case 'Orders': {
@@ -281,6 +280,11 @@ export const handleProtocol = async (
       )
       const orders = await node.getOrders(address, opts)
       const hashes = orders.map((o) => deriveOrderHash(o))
+      node.metrics?.orderQueriesReceived.inc({ peerId: peer.toString() })
+      node.metrics?.orderHashesSent.inc(
+        { peerId: peer.toString() },
+        hashes.length
+      )
       return orderHashesEncode(reqId, hashes)
     }
     case 'OrderHashes': {

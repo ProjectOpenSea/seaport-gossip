@@ -12,25 +12,20 @@ import {
   isOrderJSON,
   orderHashesFor,
 } from '../util/order.js'
-import { OrderFilter, OrderSort, Side } from '../util/types.js'
+import { AuctionType, OrderFilter, OrderSort, Side } from '../util/types.js'
 
+import type { SeaportGossipNode } from '../node.js'
 import type {
   Address,
   OrderFilterOpts,
   OrderJSON,
   OrderWithItems,
-  SeaportGossipNodeOpts,
 } from '../util/types.js'
-import type { OrderValidator } from '../validate/order.js'
 import type { OrderMetadata, Prisma, PrismaClient } from '@prisma/client'
-import type winston from 'winston'
 
 export interface GetOrdersOpts {
   /** Whether to return BUY or SELL offers. Default: SELL */
   side?: Side
-
-  /** Re-validate every order before returning. Default: true */
-  validate?: boolean
 
   /** Number of results to return. Default: 50 (~50KB). Maximum: 1000 (~1MB) */
   count?: number
@@ -48,9 +43,8 @@ export interface GetOrdersOpts {
   onlyCount?: boolean
 }
 
-const defaultGetOrdersOpts = {
+const defaultGetOrdersOpts: Required<GetOrdersOpts> = {
   side: Side.SELL,
-  validate: true,
   count: 50,
   offset: 0,
   sort: OrderSort.NEWEST,
@@ -213,7 +207,7 @@ export const queryOrders = async (
           where: {
             ...prismaOpts.where,
             startTime: { lte: timestampNow() },
-            metadata: { isAuction: false },
+            auctionType: { in: [AuctionType.BASIC, AuctionType.DUTCH] },
           },
         }
         break
@@ -223,7 +217,7 @@ export const queryOrders = async (
           where: {
             ...prismaOpts.where,
             startTime: { lte: timestampNow() },
-            metadata: { isAuction: true },
+            auctionType: { equals: AuctionType.ENGLISH },
           },
         }
         break
@@ -302,13 +296,15 @@ export const queryOrders = async (
 /**
  * Adds an order to the db if valid.
  * If the order already exists in the db, updates its metadata to the latest.
- * @param isPinned pass true if this is a locally submitted order and should be pinned
+ * @param pin pass true if this is a locally submitted order and should be pinned
+ * @param validate pass false if the order data is guaranteed to be valid (e.g. coming from OpenSea API)
  */
 export const addOrder = async (
-  prisma: PrismaClient,
-  validator: OrderValidator,
+  node: SeaportGossipNode,
   order: OrderJSON,
-  isPinned = false
+  pin = false,
+  validate = true,
+  auctionType?: AuctionType
 ): Promise<[isAdded: boolean, metadata: OrderMetadata]> => {
   if (!isOrderJSON(order)) throw new Error('invalid order format')
 
@@ -322,41 +318,63 @@ export const addOrder = async (
   }
 
   const orderAlreadyExistsInDB =
-    (await prisma.order.findFirst({ where: { hash } })) !== null
+    (await node.prisma.order.findFirst({ where: { hash } })) !== null
 
-  const isAuction = await validator.isAuction(order)
-  const isFullyFulfilled = await validator.isFullyFulfilled(hash)
-  const [isValid, _, lastValidatedBlockNumber, lastValidatedBlockHash] =
-    await validator.validate(order)
+  const isFullyFulfilled = await node.validator.isFullyFulfilled(hash)
+
+  let isValid
+  let isInvalidDueToInsufficientApprovalsOrBalances
+  let lastValidatedBlockNumber
+  let lastValidatedBlockHash
+  if (validate) {
+    ;[
+      isValid,
+      isInvalidDueToInsufficientApprovalsOrBalances, // eslint-disable-line @typescript-eslint/no-unused-vars
+      lastValidatedBlockNumber,
+      lastValidatedBlockHash,
+    ] = await node.validator.validate(order)
+  } else {
+    const block = await node.provider.getBlock('latest')
+    isValid = true
+    lastValidatedBlockNumber = block.number.toString()
+    lastValidatedBlockHash = block.hash
+  }
 
   const metadata = {
-    isAuction,
     isFullyFulfilled,
-    isPinned,
+    isPinned: pin,
     isValid,
     lastValidatedBlockNumber,
     lastValidatedBlockHash,
   }
 
   const prismaOrder = orderJSONToPrisma(order, hash)
+  auctionType = auctionType ?? (await node.validator.auctionType(order))
 
-  if (isValid === true || orderAlreadyExistsInDB || isPinned)
-    await prisma.order.upsert({
+  if (isValid === true || orderAlreadyExistsInDB || pin)
+    await node.prisma.order.upsert({
       where: { hash },
       update: { metadata: { update: metadata } },
       create: {
         ...prismaOrder,
+        auctionType,
         metadata: {
           create: metadata,
         },
       },
     })
 
-  const orderMetadata = await prisma.orderMetadata.findFirst({
+  const orderMetadata = await node.prisma.orderMetadata.findFirst({
     where: { orderHash: hash },
   })
 
   if (orderMetadata === null) throw new Error('order metadata missing')
+
+  if (!orderAlreadyExistsInDB) {
+    node.metrics?.ordersAdded.inc({
+      source: pin === true ? 'local' : 'external',
+    })
+  }
 
   return [!orderAlreadyExistsInDB, orderMetadata]
 }
@@ -366,22 +384,32 @@ export const addOrder = async (
  */
 export const exceedsMaxOrderLimits = async (
   order: OrderJSON,
-  prisma: PrismaClient,
-  logger: winston.Logger,
-  opts: Required<SeaportGossipNodeOpts>
+  node: SeaportGossipNode
 ): Promise<boolean> => {
-  const orderCount = await prisma.order.count()
-  if (orderCount + 1 > opts.maxOrders) {
-    logger.info(`Exceeded max ${opts.maxOrders} orders in db`)
+  if (await exceedsMaxOrders(node)) {
     return true
   }
-  const orderCountByOfferer = await prisma.order.count({
+  const orderCountByOfferer = await node.prisma.order.count({
     where: { offerer: order.offerer },
   })
-  if (orderCountByOfferer + 1 > opts.maxOrdersPerOfferer) {
-    logger.info(
-      `Exceeded max ${opts.maxOrdersPerOfferer} orders per offerer for ${order.offerer} in db`
+  if (orderCountByOfferer + 1 > node.opts.maxOrdersPerOfferer) {
+    node.logger.info(
+      `Exceeded max ${node.opts.maxOrdersPerOfferer} orders per offerer for ${order.offerer} in db`
     )
+    return true
+  }
+  return false
+}
+
+/**
+ * Returns true if past maxOrder limit
+ */
+export const exceedsMaxOrders = async (
+  node: SeaportGossipNode
+): Promise<boolean> => {
+  const orderCount = await node.prisma.order.count()
+  if (orderCount + 1 > node.opts.maxOrders) {
+    node.logger.info(`Exceeded max ${node.opts.maxOrders} orders in db`)
     return true
   }
   return false

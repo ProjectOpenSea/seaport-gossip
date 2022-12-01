@@ -66,8 +66,9 @@ model Order {
   extraData   String?
 
   // Metadata
-  chainId  String /// string decimal
-  metadata OrderMetadata?
+  chainId     String /// string decimal
+  metadata    OrderMetadata?
+  auctionType Int /// 0: basic, 1: english, 2: dutch
 }
 
 model OrderMetadata {
@@ -75,8 +76,6 @@ model OrderMetadata {
   createdAt DateTime @default(now())
 
   isValid Boolean
-
-  isAuction Boolean /// when order is restricted and zone is an EOA. in the future may have whitelisted "auction" zones
 
   isFullyFulfilled   Boolean
   lastFulfilledAt    String?
