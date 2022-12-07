@@ -49,6 +49,7 @@ import { isValidAddress, short } from './util/helpers.js'
 import { createWinstonLogger } from './util/log.js'
 import { setupMetrics } from './util/metrics.js'
 import { deriveOrderHash } from './util/order.js'
+import { ProviderWithMetrics } from './util/provider.js'
 import {
   decodeGossipsubEvent,
   emptyOrderJSON,
@@ -124,8 +125,11 @@ export class SeaportGossipNode {
 
     this.provider =
       typeof this.opts.web3Provider === 'string'
-        ? new ethers.providers.JsonRpcProvider(this.opts.web3Provider)
-        : this.opts.web3Provider
+        ? new ProviderWithMetrics(this.opts.web3Provider)
+        : new ProviderWithMetrics(
+            this.opts.web3Provider.connection.url,
+            this.opts.web3Provider._network
+          )
     this.seaport = new ethers.Contract(
       this.opts.seaportAddress,
       ISeaport,

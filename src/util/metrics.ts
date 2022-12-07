@@ -17,6 +17,7 @@ export const setupMetrics = (node: SeaportGossipNode) => {
     ordersAdded: new PromClient.Counter({
       name: 'orders_added',
       help: 'Number of orders added to the db',
+      labelNames: ['source'],
     }),
     ordersDeleted: new PromClient.Counter({
       name: 'orders_deleted',
@@ -28,7 +29,8 @@ export const setupMetrics = (node: SeaportGossipNode) => {
     }),
     ordersIngestedOpenSea: new PromClient.Counter({
       name: 'orders_ingested_opensea',
-      help: 'Number of orders ingested from the OpenSea API and successfully added to db',
+      help: 'Number of orders ingested from the OpenSea API',
+      labelNames: ['addedToDB'],
     }),
     ordersTotalCount: new PromClient.Gauge({
       name: 'orders_total_count',
@@ -61,46 +63,71 @@ export const setupMetrics = (node: SeaportGossipNode) => {
     ordersSent: new PromClient.Counter({
       name: 'total_orders_sent',
       help: 'Total number of orders sent through wire protocol messages',
+      labelNames: ['peerId'],
     }),
     ordersReceived: new PromClient.Counter({
       name: 'total_orders_received',
       help: 'Total number of orders received through wire protocol message',
+      labelNames: ['peerId'],
     }),
     ordersRequested: new PromClient.Counter({
       name: 'total_orders_requested',
       help: 'Total number of orders requested through wire protocol message',
+      labelNames: ['peerId'],
     }),
-    orderQueriesSent: new PromClient.Counter({
-      name: 'total_order_queries_sent',
-      help: 'Total number of order queries sent through wire protocol messages',
+    wireMessagesTotal: new PromClient.Counter({
+      name: 'wire_messages_total',
+      help: 'Total number of wire protocol messages sent',
+      labelNames: ['name', 'peerId'],
     }),
     orderQueriesReceived: new PromClient.Counter({
       name: 'total_order_queries_received',
       help: 'Total number of order queries received through wire protocol message',
+      labelNames: ['peerId'],
     }),
     orderHashesSent: new PromClient.Counter({
       name: 'total_order_hashes_sent',
       help: 'Total number of order hashes sent through wire protocol messages',
+      labelNames: ['peerId'],
     }),
     orderHashesReceived: new PromClient.Counter({
       name: 'total_order_hashes_received',
       help: 'Total number of order hashes received through wire protocol message',
+      labelNames: ['peerId'],
     }),
     nodeStatsQueriesSent: new PromClient.Counter({
       name: 'total_node_stats_queries_sent',
       help: 'Total number of node stats queries sent through wire protocol message',
+      labelNames: ['peerId'],
     }),
     nodeStatsQueriesReceived: new PromClient.Counter({
       name: 'total_node_stats_queries_received',
       help: 'Total number of node stats queries received through wire protocol message',
+      labelNames: ['peerId'],
     }),
     orderValidationErrorsAndWarnings: new PromClient.Counter({
       name: 'order_errors_and_warnings',
       help: 'Order validation errors and warnings returned',
+      labelNames: ['issue'],
     }),
     seaportEvents: new PromClient.Counter({
       name: 'seaport_events',
       help: 'Seaport events observed',
+      labelNames: ['event'],
+    }),
+    chainHeight: new PromClient.Gauge({
+      name: 'chain_height',
+      help: 'The current height of the canonical chain',
+    }),
+    ethProviderRequests: new PromClient.Counter({
+      name: 'eth_provider_requests',
+      help: 'Ethereum provider requests made',
+      labelNames: ['method', 'params'],
+    }),
+    ethProviderResponses: new PromClient.Counter({
+      name: 'eth_provider_responses',
+      help: 'Ethereum provider responses returned',
+      labelNames: ['method', 'params', 'durationInMilliseconds', 'error'],
     }),
     /*
     totalKnownPeers: new PromClient.Gauge({
@@ -114,70 +141,6 @@ export const setupMetrics = (node: SeaportGossipNode) => {
     inactivePeers: new PromClient.Gauge({
       name: 'total_inactive_peers',
       help: 'Total number of peers disconnected from due to inactivity',
-    }),
-    totalContentLookups: new PromClient.Gauge({
-      name: 'total_content_lookups',
-      help: 'Total number of content lookups initiated',
-    }),
-    successfulContentLookups: new PromClient.Counter({
-      name: 'successful_content_lookups',
-      help: 'Number of successful content lookups',
-    }),
-    failedContentLookups: new PromClient.Counter({
-      name: 'failed_content_lookups',
-      help: 'Number of failed content lookups',
-    }),
-    validOrdersReceived: new PromClient.Counter({
-      name: 'total_valid_orders_received',
-      help: 'Total number of valid orders received',
-    }),
-    invalidOrdersReceived: new PromClient.Counter({
-      name: 'total_invalid_orders_received',
-      help: 'Total number of invalid orders received',
-    }),
-    newOrdersReceived: new PromClient.Counter({
-      name: 'total_new_orders_received',
-      help: 'Total number of new orders received',
-    }),
-    acceptMessagesSent: new PromClient.Counter({
-      name: 'total_accept_messages_sent',
-      help: 'Total number of accept messages sent',
-    }),
-    acceptMessagesReceived: new PromClient.Counter({
-      name: 'total_accept_messages_received',
-      help: 'Total number of accept messages received',
-    }),
-    findContentMessagesSent: new PromClient.Counter({
-      name: 'total_findContent_messages_sent',
-      help: 'Total number of findContent messages sent',
-    }),
-    findContentMessagesReceived: new PromClient.Counter({
-      name: 'total_findContent_messages_received',
-      help: 'Total number of findContent messages received',
-    }),
-    contentMessagesSent: new PromClient.Counter({
-      name: 'total_content_messages_sent',
-      help: 'Total number of content messages sent',
-    }),
-    contentMessagesReceived: new PromClient.Counter({
-      name: 'total_content_messages_received',
-      help: 'Total number of content messages received',
-    }),
-    findNodesMessagesSent: new PromClient.Counter({
-      name: 'total_findNodes_messages_sent',
-      help: 'Total number of findNodes messages sent',
-    }),
-    findNodesMessagesReceived: new PromClient.Counter({
-      name: 'total_findNodes_messages_received',
-      help: 'Total number of findNodes messages received',
-    }),
-    nodesMessagesSent: new PromClient.Counter({
-      name: 'total_nodes_messages_sent',
-      help: 'Total number of nodes messages sent',
-    }),
-    nodesMessagesReceived: new PromClient.Counter({
-      name: 'total_nodes_messages_received',
-      help: 'Total number of nodes messages received',
     }),
     totalBytesReceived: new PromClient.Counter({
       name: 'total_bytes_received',

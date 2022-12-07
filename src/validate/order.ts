@@ -171,13 +171,14 @@ export class OrderValidator {
   }
 
   /**
-   * Checks if order is restricted and zone is EOA, then the order is likely an english auction.
+   * Returns the auction type of an order.
    */
   public async auctionType(order: OrderJSON): Promise<AuctionType> {
     if (
       order.orderType === OrderType.FULL_RESTRICTED ||
       order.orderType === OrderType.PARTIAL_RESTRICTED
     ) {
+      // For an english auction on OpenSea, the zone is an EOA that closes the auction.
       const isContract = await this._isContract(order.zone)
       if (!isContract) return AuctionType.ENGLISH
     }

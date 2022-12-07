@@ -251,6 +251,11 @@ export const handleProtocol = async (
 
   logger.debug(`Received protocol message ${protocol.name} from ${shortPeerId}`)
 
+  node.metrics?.wireMessagesTotal.inc({
+    name: protocol.name,
+    peerId: peer.toString(),
+  })
+
   switch (protocol.name) {
     case 'GetOrders': {
       const { reqId, hashes } = orderHashesDecode(message)
@@ -291,6 +296,10 @@ export const handleProtocol = async (
       const { reqId, hashes } = orderHashesDecode(message)
       logger.debug(
         `Received ${hashes.length} order hashes from ${shortPeerId} (reqId: ${reqId})`
+      )
+      node.metrics?.orderHashesReceived.inc(
+        { peerId: peer.toString() },
+        hashes.length
       )
       return
     }
