@@ -3,3 +3,4 @@ dist
 datadirs
 yarn-error.log
 *.env
+.idea/
