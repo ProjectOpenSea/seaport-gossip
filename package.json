@@ -1,5 +1,6 @@
 {
   "name": "seaport-gossip",
+  "private": true,
   "version": "0.0.1",
   "description": "A peer-to-peer network for sharing Seaport orders.",
   "author": "OpenSea",
