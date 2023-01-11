@@ -61,7 +61,7 @@
     "@prisma/client": "^4.3.1",
     "async-sema": "^3.1.1",
     "bigint-buffer": "^1.1.5",
-    "class-validator": "^0.13.2",
+    "class-validator": "^0.14.0",
     "ethers": "^5.7.1",
     "graphql": "^15.3.0",
     "graphql-fields": "^2.0.3",
