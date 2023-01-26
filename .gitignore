@@ -4,3 +4,4 @@ datadirs
 yarn-error.log
 *.env
 .idea/
+schema.gql
