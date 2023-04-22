@@ -122,12 +122,17 @@ export const setupMetrics = (node: SeaportGossipNode) => {
     ethProviderRequests: new PromClient.Counter({
       name: 'eth_provider_requests',
       help: 'Ethereum provider requests made',
-      labelNames: ['method', 'params'],
+      labelNames: ['method'],
     }),
     ethProviderResponses: new PromClient.Counter({
       name: 'eth_provider_responses',
       help: 'Ethereum provider responses returned',
-      labelNames: ['method', 'params', 'durationInMilliseconds', 'error'],
+      labelNames: ['method', 'error'],
+    }),
+    ethProviderResponseTimeMilliseconds: new PromClient.Histogram({
+      name: 'eth_provider_response_time_milliseconds',
+      help: 'Ethereum provider response time in milliseconds',
+      labelNames: ['method'],
     }),
     /*
     totalKnownPeers: new PromClient.Gauge({

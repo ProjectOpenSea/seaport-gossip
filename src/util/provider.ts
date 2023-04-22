@@ -4,7 +4,8 @@ import type { SeaportGossipMetrics } from './metrics.js'
 import type { Networkish } from '@ethersproject/networks'
 import type { ConnectionInfo } from '@ethersproject/web'
 
-export class ProviderWithMetrics extends ethers.providers.JsonRpcProvider {
+export class ProviderWithMetrics extends ethers.providers
+  .StaticJsonRpcProvider {
   private jsonRpcRequests: { [id: string]: number } = {}
 
   constructor(
@@ -16,27 +17,23 @@ export class ProviderWithMetrics extends ethers.providers.JsonRpcProvider {
 
     if (metrics !== undefined) {
       this.on('block', (blockNumber) => {
-        metrics.chainHeight.set(blockNumber.toString())
+        metrics.chainHeight.set(blockNumber)
       })
 
       this.on('debug', ({ action, request, error }) => {
-        const { id, method, params: rawParams } = request
-        const params = JSON.stringify(rawParams)
+        const { id, method } = request
         if (action === 'request') {
           this.jsonRpcRequests[id] = Date.now()
-          metrics.ethProviderRequests.inc({
-            method,
-            params,
-          })
+          metrics.ethProviderRequests.inc({ method })
         } else if (action === 'response') {
           const start = this.jsonRpcRequests[id]
           if (start !== undefined) {
-            const durationInMilliseconds = Date.now() - start
+            const duration = Date.now() - start
+            const errorMessage = error?.message.split(' (')[0] ?? undefined
+            metrics.ethProviderResponseTimeMilliseconds.observe(duration)
             metrics.ethProviderResponses.inc({
               method,
-              params,
-              durationInMilliseconds,
-              error: error?.message ?? undefined,
+              error: errorMessage,
             })
             delete this.jsonRpcRequests[id]
           }
