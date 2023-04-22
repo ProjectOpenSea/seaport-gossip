@@ -1294,7 +1294,7 @@
   dependencies:
     phoenix "^1.6.2"
 
-"@opentelemetry/api@^1.1.0":
+"@opentelemetry/api@^1.3.0":
   version "1.4.1"
   resolved "https://registry.yarnpkg.com/@opentelemetry/api/-/api-1.4.1.tgz#ff22eb2e5d476fbc2450a196e40dd243cc20c28f"
   integrity sha512-O2yRJce1GOc6PAy3QxFM4NzFiWzvScDC1/5ihYBL6BUEVdq0XMWN01sppE+H6bBXbaFYipjwFLEWLg5PaSOThA==
@@ -1314,7 +1314,7 @@
     "@opentelemetry/core" "1.12.0"
     "@opentelemetry/semantic-conventions" "1.12.0"
 
-"@opentelemetry/sdk-trace-base@^1.4.0":
+"@opentelemetry/sdk-trace-base@^1.8.0":
   version "1.12.0"
   resolved "https://registry.yarnpkg.com/@opentelemetry/sdk-trace-base/-/sdk-trace-base-1.12.0.tgz#62b895dbb5900048a85e4899c38fec5585447d4b"
   integrity sha512-pfCOB3tNDlYVoWuz4D7Ji+Jmy9MHnATWHVpkERdCEiwUGEZ+4IvNPXUcPc37wJVmMpjGLeaWgPPrie0KIpWf1A==
@@ -1362,6 +1362,15 @@
   dependencies:
     "@prisma/engines-version" "4.13.0-50.1e7af066ee9cb95cf3a403c78d9aab3e6b04f37a"
 
+"@prisma/debug@4.13.0":
+  version "4.13.0"
+  resolved "https://registry.yarnpkg.com/@prisma/debug/-/debug-4.13.0.tgz#22ea918572164764e74d8f25371b5a20b2590ec1"
+  integrity sha512-JrltTewF/paRb5mcM5OvcEi9DtdX0sINOAswruxKQrwOLA7Phqb52OfY38MIzGrsrJ8iUGVqQ5bpYZYpxOGCsQ==
+  dependencies:
+    "@types/debug" "4.1.7"
+    debug "4.3.4"
+    strip-ansi "6.0.1"
+
 "@prisma/debug@4.3.1":
   version "4.3.1"
   resolved "https://registry.yarnpkg.com/@prisma/debug/-/debug-4.3.1.tgz#e10627661352773fe58d513bc3e631df3548e995"
@@ -1371,17 +1380,17 @@
     debug "4.3.4"
     strip-ansi "6.0.1"
 
-"@prisma/engine-core@4.3.1":
-  version "4.3.1"
-  resolved "https://registry.yarnpkg.com/@prisma/engine-core/-/engine-core-4.3.1.tgz#0de5f69320fa2646d8732ddac216e1aad485157c"
-  integrity sha512-Yirn3NUnzRKVW1C2cAGVdZi8yAyL6d4xLHkl+sbwJL6foS7UjTE0w5JEOwvkYDaPN5lf6Wo5Y8KFzb8f28BUyw==
+"@prisma/engine-core@4.3.1", "@prisma/engine-core@>=4.13.0":
+  version "4.13.0"
+  resolved "https://registry.yarnpkg.com/@prisma/engine-core/-/engine-core-4.13.0.tgz#ee36a4f84e7bcccbcef18a0b7d61a61cd3b7cbc6"
+  integrity sha512-D+jooGRXKAZcsBanhvFhqXMvNEiNaP+OaOvFOM/eKQQXM0FwtKc27l7mQFv4dd/zOufr5T+fJyrTTQhWyV8oFg==
   dependencies:
-    "@opentelemetry/api" "^1.1.0"
-    "@opentelemetry/sdk-trace-base" "^1.4.0"
-    "@prisma/debug" "4.3.1"
-    "@prisma/engines" "4.3.1"
-    "@prisma/generator-helper" "4.3.1"
-    "@prisma/get-platform" "4.3.1"
+    "@opentelemetry/api" "^1.3.0"
+    "@opentelemetry/sdk-trace-base" "^1.8.0"
+    "@prisma/debug" "4.13.0"
+    "@prisma/engines" "4.13.0"
+    "@prisma/generator-helper" "4.13.0"
+    "@prisma/get-platform" "4.13.0"
     chalk "4.1.2"
     execa "5.1.1"
     get-stream "6.0.1"
@@ -1389,7 +1398,8 @@
     new-github-issue-url "0.2.1"
     p-retry "4.6.2"
     strip-ansi "6.0.1"
-    undici "5.10.0"
+    ts-pattern "4.2.2"
+    undici "5.21.0"
 
 "@prisma/engines-version@4.13.0-50.1e7af066ee9cb95cf3a403c78d9aab3e6b04f37a":
   version "4.13.0-50.1e7af066ee9cb95cf3a403c78d9aab3e6b04f37a"
@@ -1429,6 +1439,16 @@
     temp-dir "2.0.0"
     tempy "1.0.1"
 
+"@prisma/generator-helper@4.13.0":
+  version "4.13.0"
+  resolved "https://registry.yarnpkg.com/@prisma/generator-helper/-/generator-helper-4.13.0.tgz#4a665bba70681509003f0a8b34607835e80664c7"
+  integrity sha512-Zx9rtbsEIU/9DKnGRvmjLdyeyhzeeXNFp1alkRh1w//rQ5jTcobiay/jU4Qo+EQOs2bnWEfUeiBoOjfaysdLNg==
+  dependencies:
+    "@prisma/debug" "4.13.0"
+    "@types/cross-spawn" "6.0.2"
+    chalk "4.1.2"
+    cross-spawn "7.0.3"
+
 "@prisma/generator-helper@4.3.1", "@prisma/generator-helper@~4.3.0":
   version "4.3.1"
   resolved "https://registry.yarnpkg.com/@prisma/generator-helper/-/generator-helper-4.3.1.tgz#8b486cd56efb3837843c10da2657371e62327e8d"
@@ -1438,6 +1458,22 @@
     "@types/cross-spawn" "6.0.2"
     chalk "4.1.2"
     cross-spawn "7.0.3"
+
+"@prisma/get-platform@4.13.0":
+  version "4.13.0"
+  resolved "https://registry.yarnpkg.com/@prisma/get-platform/-/get-platform-4.13.0.tgz#1d46f84fa83944662962ca80554f78d04994a2a4"
+  integrity sha512-HWBgQNpRi1qEXj24w/qsWCpTW4vKP2/pdiYTyl2SSEVoK4o5izHUt0PQzNl5St5CGr4SDcSyi0C3fXINd46c6A==
+  dependencies:
+    "@prisma/debug" "4.13.0"
+    chalk "4.1.2"
+    escape-string-regexp "4.0.0"
+    execa "5.1.1"
+    fs-jetpack "5.1.0"
+    replace-string "3.1.0"
+    strip-ansi "6.0.1"
+    tempy "1.0.1"
+    terminal-link "2.1.1"
+    ts-pattern "4.2.2"
 
 "@prisma/get-platform@4.3.1":
   version "4.3.1"
@@ -3504,6 +3540,13 @@ fs-jetpack@4.3.1:
   dependencies:
     minimatch "^3.0.2"
     rimraf "^2.6.3"
+
+fs-jetpack@5.1.0:
+  version "5.1.0"
+  resolved "https://registry.yarnpkg.com/fs-jetpack/-/fs-jetpack-5.1.0.tgz#dcd34d709b69007c9dc2420a6f2b9e8f986cff0d"
+  integrity sha512-Xn4fDhLydXkuzepZVsr02jakLlmoARPy+YWIclo4kh0GyNGUHnTqeH/w/qIsVn50dFxtp8otPL2t/HcPJBbxUA==
+  dependencies:
+    minimatch "^5.1.0"
 
 fs.realpath@^1.0.0:
   version "1.0.0"
@@ -6147,7 +6190,7 @@ ts-node@^10.9.1:
     v8-compile-cache-lib "^3.0.1"
     yn "3.1.1"
 
-ts-pattern@^4.0.1:
+ts-pattern@4.2.2, ts-pattern@^4.0.1:
   version "4.2.2"
   resolved "https://registry.yarnpkg.com/ts-pattern/-/ts-pattern-4.2.2.tgz#e6fae2aa1ff1a7ff2ce3166f8c329a4f252f78d6"
   integrity sha512-qzJMo2pbkUJWusRH5o8xR+xogn6RmvViyUgwBFTtRENLse470clCGjHDf6haWGZ1AOmk8XkEohUoBW8Uut6Scg==
@@ -6295,10 +6338,12 @@ unbox-primitive@^1.0.2:
     has-symbols "^1.0.3"
     which-boxed-primitive "^1.0.2"
 
-undici@5.10.0:
-  version "5.10.0"
-  resolved "https://registry.yarnpkg.com/undici/-/undici-5.10.0.tgz#dd9391087a90ccfbd007568db458674232ebf014"
-  integrity sha512-c8HsD3IbwmjjbLvoZuRI26TZic+TSEe8FPMLLOkN1AfYRhdjnKBU6yL+IwcSCbdZiX4e5t0lfMDLDCqj4Sq70g==
+undici@5.21.0:
+  version "5.21.0"
+  resolved "https://registry.yarnpkg.com/undici/-/undici-5.21.0.tgz#b00dfc381f202565ab7f52023222ab862bb2494f"
+  integrity sha512-HOjK8l6a57b2ZGXOcUsI5NLfoTrfmbOl90ixJDl0AEFG4wgHNDQxtZy15/ZQp7HhjkpaGlp/eneMgtsu1dIlUA==
+  dependencies:
+    busboy "^1.6.0"
 
 undici@^5.12.0, undici@^5.8.0:
   version "5.22.0"

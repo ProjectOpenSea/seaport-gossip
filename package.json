@@ -109,5 +109,8 @@
   "homepage": "https://github.com/ProjectOpenSea/seaport-gossip#readme",
   "bugs": {
     "url": "https://github.com/ProjectOpenSea/seaport-gossip/issues"
+  },
+  "resolutions": {
+    "@prisma/engine-core": ">=4.13.0"
   }
 }
