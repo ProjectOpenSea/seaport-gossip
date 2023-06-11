@@ -49,6 +49,7 @@ import { isValidAddress, short } from './util/helpers.js'
 import { createWinstonLogger } from './util/log.js'
 import { setupMetrics } from './util/metrics.js'
 import { deriveOrderHash } from './util/order.js'
+import { ProviderWithMetrics } from './util/provider.js'
 import {
   decodeGossipsubEvent,
   emptyOrderJSON,
@@ -124,8 +125,16 @@ export class SeaportGossipNode {
 
     this.provider =
       typeof this.opts.web3Provider === 'string'
-        ? new ethers.providers.JsonRpcProvider(this.opts.web3Provider)
-        : this.opts.web3Provider
+        ? new ProviderWithMetrics(
+            this.opts.web3Provider,
+            undefined,
+            this.metrics
+          )
+        : new ProviderWithMetrics(
+            this.opts.web3Provider.connection.url,
+            this.opts.web3Provider._network,
+            this.metrics
+          )
     this.seaport = new ethers.Contract(
       this.opts.seaportAddress,
       ISeaport,
@@ -140,6 +149,10 @@ export class SeaportGossipNode {
     ) {
       this.ingestor = new OpenSeaOrderIngestor({ node: this })
     }
+
+    process.on('uncaughtException', (error) => {
+      this.logger.error(`uncaughtException: ${JSON.stringify(error)}`)
+    })
   }
 
   /**
@@ -169,7 +182,9 @@ export class SeaportGossipNode {
       msgIdFn: gossipsubMsgIdFn,
     })
 
-    const metrics = this.opts.metrics ? prometheusMetrics() : undefined
+    const metrics = this.opts.metrics
+      ? prometheusMetrics({ preserveExistingMetrics: true })
+      : undefined
 
     const libp2pOpts = {
       peerId: this.opts.peerId ?? undefined,

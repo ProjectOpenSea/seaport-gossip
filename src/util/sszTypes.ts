@@ -67,7 +67,7 @@ export const Order = new ContainerType({
 
 export const Orders = new ContainerType({
   reqId: UintNum64,
-  orders: new ListCompositeType(Order, 100),
+  orders: new ListCompositeType(Order, 1000),
 })
 
 export const GossipsubEvent = new ContainerType({
