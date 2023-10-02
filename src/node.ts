@@ -104,7 +104,7 @@ export class SeaportGossipNode {
   public metrics?: SeaportGossipMetrics
 
   private nextReqId = 0
-  private revalidateInterval?: NodeJS.Timer
+  private revalidateIntervalId?: ReturnType<typeof setInterval>
 
   constructor(opts: SeaportGossipNodeOpts = {}) {
     this.opts = Object.freeze({ ...seaportGossipNodeDefaultOpts, ...opts })
@@ -235,7 +235,7 @@ export class SeaportGossipNode {
     this.seaportListener.start()
     await this.ingestor?.start()
 
-    this.revalidateInterval = setInterval(async () => {
+    this.revalidateIntervalId = setInterval(async () => {
       await this._validateStaleOrders()
     }, this.opts.revalidateInterval * 1000)
 
@@ -255,7 +255,7 @@ export class SeaportGossipNode {
   public async stop() {
     if (!this.running) return
     this.logger.info('Node stopping...')
-    clearInterval(this.revalidateInterval)
+    clearInterval(this.revalidateIntervalId)
     this.ingestor?.stop()
     this.seaportListener.stop()
     this._removeListeners()
