@@ -1,7 +1,7 @@
 import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
 
-import { MerkleTree } from '../dist/util/merkleTree.js'
+import { MerkleTree } from '../src/util/merkleTree.js'
 
 chai.use(chaiAsPromised)
 

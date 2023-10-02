@@ -2,7 +2,7 @@ import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
 import { setTimeout } from 'timers/promises'
 
-import { SeaportGossipNode, Side } from '../dist/index.js'
+import { SeaportGossipNode, Side } from '../src/index.js'
 
 import { truncateTables } from './util/db.js'
 import { MockProvider } from './util/provider.js'

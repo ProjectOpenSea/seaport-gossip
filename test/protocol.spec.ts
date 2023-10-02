@@ -4,7 +4,7 @@ import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
 import { setTimeout } from 'timers/promises'
 
-import { SeaportGossipNode } from '../dist/index.js'
+import { SeaportGossipNode } from '../src/index.js'
 
 // import invalidBasicOrders from './testdata/orders/basic-invalid.json' assert { type: 'json' }
 import validBasicOrders from './testdata/orders/basic-valid.json' assert { type: 'json' }

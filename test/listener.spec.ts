@@ -2,8 +2,8 @@ import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
 import { BigNumber } from 'ethers'
 
-import { SeaportGossipNode } from '../dist/index.js'
-import { deriveOrderHash } from '../dist/util/order.js'
+import { SeaportGossipNode } from '../src/index.js'
+import { deriveOrderHash } from '../src/util/order.js'
 
 import validBasicOrders from './testdata/orders/basic-valid.json' assert { type: 'json' }
 import { truncateTables } from './util/db.js'

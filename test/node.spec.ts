@@ -1,7 +1,7 @@
 import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
 
-import { SeaportGossipNode } from '../dist/index.js'
+import { SeaportGossipNode } from '../src/index.js'
 
 import { MockProvider } from './util/provider.js'
 

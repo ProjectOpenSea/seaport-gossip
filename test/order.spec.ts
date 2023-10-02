@@ -1,20 +1,15 @@
 import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
 
-import { SeaportGossipNode } from '../dist/index.js'
-import { orderToJSON } from '../dist/util/convert.js'
-import { ErrorInvalidAddress } from '../dist/util/errors.js'
-import { timestampNow, zeroAddress } from '../dist/util/helpers.js'
+import { SeaportGossipNode } from '../src/index.js'
+import { orderToJSON } from '../src/util/convert.js'
+import { ErrorInvalidAddress } from '../src/util/errors.js'
+import { timestampNow, zeroAddress } from '../src/util/helpers.js'
 import {
   compareOrdersByCurrentPrice,
   deriveOrderHash,
-} from '../dist/util/order.js'
-import {
-  AuctionType,
-  OrderFilter,
-  OrderSort,
-  Side,
-} from '../dist/util/types.js'
+} from '../src/util/order.js'
+import { AuctionType, OrderFilter, OrderSort, Side } from '../src/util/types.js'
 
 import invalidBasicOrders from './testdata/orders/basic-invalid.json' assert { type: 'json' }
 import validBasicOrders from './testdata/orders/basic-valid.json' assert { type: 'json' }
@@ -27,8 +22,8 @@ import {
 } from './util/db.js'
 import { MockProvider } from './util/provider.js'
 
-import type { GetOrdersOpts } from '../dist/query/order.js'
-import type { OrderWithItems } from '../dist/util/types.js'
+import type { GetOrdersOpts } from '../src/query/order.js'
+import type { OrderWithItems } from '../src/util/types.js'
 
 chai.use(chaiAsPromised)
 

@@ -1,5 +1,5 @@
-import type { SeaportGossipNode } from '../../dist/node.js'
-import type { AuctionType } from '../../dist/util/types.js'
+import type { SeaportGossipNode } from '../../src/node.js'
+import type { AuctionType } from '../../src/util/types.js'
 import type { PrismaClient } from '@prisma/client'
 
 /**

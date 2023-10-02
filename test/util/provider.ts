@@ -1,9 +1,11 @@
 import { BigNumber, ethers } from 'ethers'
 
 import type { Network, Networkish } from '@ethersproject/networks'
+import type { ConnectionInfo } from 'ethers/lib/utils.js'
 
 export class MockProvider extends ethers.providers.BaseProvider {
   private validateSpecTests: boolean
+  public connection: ConnectionInfo
 
   constructor(
     network: Networkish | Promise<Network>,
@@ -11,6 +13,7 @@ export class MockProvider extends ethers.providers.BaseProvider {
   ) {
     super(network)
     this.validateSpecTests = validateSpecTests
+    this.connection = { url: 'mock' }
   }
 
   public async perform(method: string, params: any) {

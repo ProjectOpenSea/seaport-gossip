@@ -14,7 +14,7 @@ import PromClient from 'prom-client'
 import { Uint8ArrayList } from 'uint8arraylist'
 
 import ISeaport from './contract-abi/Seaport.json' assert { type: 'json' }
-import { startGraphqlServer } from './db/index.js'
+import { initYoga } from './db/index.js'
 import { OpenSeaOrderIngestor } from './ingestors/opensea.js'
 import { SeaportListener } from './listeners/seaport.js'
 import {
@@ -63,6 +63,7 @@ import {
 } from './util/types.js'
 import { OrderValidator } from './validate/index.js'
 
+import type { Yoga } from './db/index.js'
 import type { GetOrdersOpts } from './query/order.js'
 import type { SeaportGossipMetrics } from './util/metrics.js'
 import type {
@@ -73,21 +74,23 @@ import type {
   SeaportGossipNodeOpts,
 } from './util/types.js'
 import type { GossipSub, GossipsubMessage } from '@chainsafe/libp2p-gossipsub'
+import type { Libp2pEvents } from '@libp2p/interface-libp2p'
 import type { PeerId } from '@libp2p/interface-peer-id'
 import type { PeerInfo } from '@libp2p/interface-peer-info'
+import type { PubSub } from '@libp2p/interface-pubsub'
 import type { Multiaddr } from '@multiformats/multiaddr'
 import type { Server } from 'http'
-import type { Libp2p, Libp2pEvents } from 'libp2p'
+import type { Libp2p } from 'libp2p'
 import type winston from 'winston'
 
 /**
  * SeaportGossipNode is a p2p client for sharing Seaport orders.
  */
 export class SeaportGossipNode {
-  public libp2p!: Libp2p
+  public libp2p!: Libp2p<{ pubsub: PubSub }>
   public running = false
 
-  private graphql: ReturnType<typeof startGraphqlServer>
+  private yoga: Yoga
   private metricsHttpServer?: Server
   private ingestor?: OpenSeaOrderIngestor
   private seaportListener: SeaportListener
@@ -115,12 +118,13 @@ export class SeaportGossipNode {
         this.opts.peerId?.toString(),
         this.opts.logColor
       )
-    this.graphql = startGraphqlServer({
-      port: this.opts.graphqlPort,
-      logger: this.logger,
-    })
     this.prisma = new PrismaClient({
       datasources: { db: { url: `file:../${this.opts.datadir}/dev.db` } },
+    })
+    this.yoga = initYoga({
+      prisma: this.prisma,
+      port: this.opts.graphqlPort,
+      logger: this.logger,
     })
 
     this.provider =
@@ -200,7 +204,9 @@ export class SeaportGossipNode {
         maxConnections: this.opts.maxConnections,
       },
       dht: seaportDHT,
-      pubsub,
+      services: {
+        pubsub,
+      },
       metrics,
       ...this.opts.customLibp2pConfig,
     }
@@ -210,7 +216,6 @@ export class SeaportGossipNode {
     this._addListeners()
     await this._addProtocols()
 
-    await this.graphql.start()
     await this.libp2p.start()
     this.running = true
 
@@ -255,7 +260,7 @@ export class SeaportGossipNode {
     this.seaportListener.stop()
     this._removeListeners()
     await this.libp2p.stop()
-    await this.graphql.stop()
+    this.yoga.stop()
     await this.prisma.$disconnect()
     if (this.metricsHttpServer !== undefined) {
       this.logger.info('Closing Metrics HTTP Server.')
@@ -507,7 +512,7 @@ export class SeaportGossipNode {
     try {
       let peer: PeerInfo | undefined
       if (multiaddrs.length > 0) {
-        await this.libp2p.peerStore.addressBook.set(peerId, multiaddrs)
+        await this.libp2p.peerStore.save(peerId, { multiaddrs })
       } else {
         peer = await this.libp2p.peerRouting.findPeer(peerId)
         if (peer !== undefined) {
@@ -725,7 +730,11 @@ export class SeaportGossipNode {
    * Gossips an order event to the network.
    */
   public async publishEvent(event: GossipsubEvent) {
-    await publishEvent(event, this.libp2p.pubsub, this.logger)
+    await publishEvent(
+      event,
+      this.libp2p.services.pubsub as PubSub,
+      this.logger
+    )
   }
 
   /**
@@ -737,11 +746,11 @@ export class SeaportGossipNode {
   ) {
     if (!this.running) throw ErrorNodeNotRunning
     if (!isValidAddress(address)) return false
-    ;(this.libp2p.pubsub as GossipSub).addEventListener(
+    ;(this.libp2p.services.pubsub as GossipSub).addEventListener(
       'gossipsub:message',
       this._handleGossipsubMessage(address, _onGossipsubEvent).bind(this)
     )
-    this.libp2p.pubsub.subscribe(address)
+    this.libp2p.services.pubsub.subscribe(address)
     this.logger.info(`Subscribed to gossipsub for collection ${short(address)}`)
     return true
   }
@@ -870,7 +879,7 @@ export class SeaportGossipNode {
         }
       }
 
-      ;(this.libp2p.pubsub as GossipSub).reportMessageValidationResult(
+      ;(this.libp2p.services.pubsub as GossipSub).reportMessageValidationResult(
         msgId,
         propagationSource,
         acceptance
@@ -889,11 +898,11 @@ export class SeaportGossipNode {
    */
   public gossipsubUnsubscribe(address: Address) {
     if (!this.running) throw ErrorNodeNotRunning
-    if (!(address in this.libp2p.pubsub.getTopics())) {
+    if (!(address in this.libp2p.services.pubsub.getTopics())) {
       this.logger.warn(`No active subscription found for ${address}`)
       return false
     }
-    this.libp2p.pubsub.unsubscribe(address)
+    this.libp2p.services.pubsub.unsubscribe(address)
     this.logger.info(`Unsubscribed from gossipsub for topic ${address}`)
     return true
   }
@@ -941,11 +950,8 @@ export class SeaportGossipNode {
       'peer:discovery',
       this._onPeerDiscovery.bind(this)
     )
-    this.libp2p.connectionManager.addEventListener(
-      'peer:connect',
-      this._onPeerConnect.bind(this)
-    )
-    this.libp2p.connectionManager.addEventListener(
+    this.libp2p.addEventListener('peer:connect', this._onPeerConnect.bind(this))
+    this.libp2p.addEventListener(
       'peer:disconnect',
       this._onPeerDisconnect.bind(this)
     )
@@ -959,11 +965,11 @@ export class SeaportGossipNode {
       'peer:discovery',
       this._onPeerDiscovery.bind(this)
     )
-    this.libp2p.connectionManager.removeEventListener(
+    this.libp2p.removeEventListener(
       'peer:connect',
       this._onPeerConnect.bind(this)
     )
-    this.libp2p.connectionManager.removeEventListener(
+    this.libp2p.removeEventListener(
       'peer:disconnect',
       this._onPeerDisconnect.bind(this)
     )

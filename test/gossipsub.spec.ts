@@ -8,9 +8,9 @@ import { setTimeout } from 'timers/promises'
 import {
   SeaportGossipNode,
   orderJSONToChecksummedAddresses,
-} from '../dist/index.js'
-import { deriveOrderHash } from '../dist/util/order.js'
-import { OrderEvent } from '../dist/util/types.js'
+} from '../src/index.js'
+import { deriveOrderHash } from '../src/util/order.js'
+import { OrderEvent } from '../src/util/types.js'
 
 import validBasicOrders from './testdata/orders/basic-valid.json' assert { type: 'json' }
 import { truncateTables } from './util/db.js'

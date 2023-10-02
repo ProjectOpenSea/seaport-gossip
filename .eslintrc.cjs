@@ -85,6 +85,11 @@ module.exports = {
         format: ['camelCase'],
         leadingUnderscore: 'allow',
         trailingUnderscore: 'allow',
+        filter: {
+          // you can expand this regex to add more allowed names
+          regex: '^(Content-Type|Another-Property-Name)$',
+          match: false,
+        },
       },
       {
         selector: ['variable', 'parameter'],
@@ -111,6 +116,11 @@ module.exports = {
         selector: ['objectLiteralProperty', 'objectLiteralMethod'],
         format: ['camelCase', 'PascalCase', 'snake_case', 'UPPER_CASE'],
         leadingUnderscore: 'allow',
+        filter: {
+          // you can expand this regex to add more allowed names
+          regex: '^(Content-Type|Another-Property-Name)$',
+          match: false,
+        },
       },
       {
         selector: 'typeProperty',
@@ -234,12 +244,7 @@ module.exports = {
       },
     ],
     'use-isnan': 'error',
-    'no-restricted-imports': [
-      'error',
-      {
-        patterns: ['src'],
-      },
-    ],
+    // 'no-restricted-imports': ['error', { patterns: ['src'] }],
     'sort-imports': ['error', { ignoreDeclarationSort: true }],
   },
   overrides: [
