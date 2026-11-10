@@ -1,3 +1,6 @@
+> [!NOTE]
+> This repository is archived and no longer maintained. There is no official npm package: the `seaport-gossip` name on npm is a security holding package, so don't install it.
+
 ![Seaport Gossip](img/seaport-gossip-banner.png)
 
 [![Version][version-badge]][version-link]
